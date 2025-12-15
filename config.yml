@@ -1,0 +1,88 @@
+version: 2.1.1
+base_install: true
+
+
+# CONFIGURATION
+# Configure defaults for the tools you use and how Agent OS should compile commands for your projects.
+
+
+# ================================================
+# Do you use Claude Code?
+# Set to true to install commands in your project's .claude/commands/agent-os/ folder
+#
+
+# Override this default when running project-install.sh by using the flag --claude-code-commands=true/false
+# ================================================
+claude_code_commands: true
+
+
+# ================================================
+# Do you use other coding tools (Cursor, Windsurf, etc.)?
+# Set to true to install commands in your project's agent-os/commands/ folder
+#
+# Override this default when running project-install.sh by using the flag --agent-os-commands true/false
+# ================================================
+agent_os_commands: true
+
+
+# ================================================
+# Do you want Claude Code to use subagents?
+# Set to true to install agents in .claude/agents/agent-os/ and have commands delegate to them
+# Requires claude_code_commands: true
+#
+# Override this default when running project-install.sh by using the flag --use-claude-code-subagents true/false
+# ================================================
+use_claude_code_subagents: true
+
+
+# ================================================
+# Should standards be provided to Claude Code as Skills?
+# Set to true to use Claude Code's Skills feature for reading standards
+# Set to false to inject standards as file references in command prompts
+# Requires claude_code_commands: true (automatically treated as false if claude_code_commands is false)
+#
+# Override this default when running project-install.sh by using the flag --standards-as-claude-code-skills true/false
+# ================================================
+standards_as_claude_code_skills: true
+
+
+# ================================================
+# ATOMIC DESIGN & ISSUE TRACKING CONFIGURATION
+# ================================================
+
+# ================================================
+# Default issue tracking mode for new specs
+# Options: tasks_md | beads
+#
+# tasks_md: Use hierarchical task groups in tasks.md (current default)
+# beads: Use beads CLI for distributed issue tracking with atomic design hierarchy
+#
+# Note: This is the DEFAULT. Users will be asked to choose per-spec during initialization.
+#
+# Override this default when running project-install.sh by using the flag --tracking-mode tasks_md/beads
+# ================================================
+tracking_mode: tasks_md
+
+
+# ================================================
+# Enable beads as an issue tracking option?
+# Set to true to allow specs to use beads for issue tracking
+# Set to false to only offer tasks.md (beads options will be hidden)
+#
+# Note: Requires beads to be installed (https://github.com/steveyegge/beads)
+# Check installation: bd --version
+#
+# Override this default when running project-install.sh by using the flag --beads-enabled true/false
+# ================================================
+beads_enabled: true
+
+
+# ================================================
+# PROFILE
+#
+# Use this profile by default.
+#
+# Override this default when running project-install.sh by using the flag --profile [profile-name]
+# ================================================
+
+profile: default
