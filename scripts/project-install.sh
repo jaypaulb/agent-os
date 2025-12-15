@@ -217,12 +217,8 @@ install_claude_code_commands_with_delegation() {
     mkdir -p "$target_dir"
 
     while read file; do
-        # Process multi-agent command files OR top-level command files (orchestrate-tasks, auto-build, autonomous-plan, improve-skills)
-        if [[ "$file" == commands/*/multi-agent/* ]] || \
-           [[ "$file" == commands/orchestrate-tasks/orchestrate-tasks.md ]] || \
-           [[ "$file" == commands/auto-build/auto-build.md ]] || \
-           [[ "$file" == commands/autonomous-plan/autonomous-plan.md ]] || \
-           [[ "$file" == commands/improve-skills/improve-skills.md ]]; then
+        # Process multi-agent command files OR orchestrate-tasks special case
+        if [[ "$file" == commands/*/multi-agent/* ]] || [[ "$file" == commands/orchestrate-tasks/orchestrate-tasks.md ]]; then
             local source=$(get_profile_file "$EFFECTIVE_PROFILE" "$file" "$BASE_DIR")
             if [[ -f "$source" ]]; then
                 # Extract command name from path (e.g., commands/create-spec/multi-agent/create-spec.md -> create-spec)
@@ -255,22 +251,14 @@ install_claude_code_commands_without_delegation() {
     local commands_count=0
 
     while read file; do
-        # Process single-agent command files OR top-level command files
-        if [[ "$file" == commands/*/single-agent/* ]] || \
-           [[ "$file" == commands/orchestrate-tasks/orchestrate-tasks.md ]] || \
-           [[ "$file" == commands/auto-build/auto-build.md ]] || \
-           [[ "$file" == commands/autonomous-plan/autonomous-plan.md ]] || \
-           [[ "$file" == commands/improve-skills/improve-skills.md ]]; then
+        # Process single-agent command files OR orchestrate-tasks special case
+        if [[ "$file" == commands/*/single-agent/* ]] || [[ "$file" == commands/orchestrate-tasks/orchestrate-tasks.md ]]; then
             local source=$(get_profile_file "$EFFECTIVE_PROFILE" "$file" "$BASE_DIR")
             if [[ -f "$source" ]]; then
-                # Handle top-level commands specially (flat destination, no PHASE embedding)
-                if [[ "$file" == commands/orchestrate-tasks/orchestrate-tasks.md ]] || \
-                   [[ "$file" == commands/auto-build/auto-build.md ]] || \
-                   [[ "$file" == commands/autonomous-plan/autonomous-plan.md ]] || \
-                   [[ "$file" == commands/improve-skills/improve-skills.md ]]; then
-                    local cmd_name=$(echo "$file" | cut -d'/' -f2)
-                    local dest="$PROJECT_DIR/.claude/commands/agent-os/${cmd_name}.md"
-                    # Compile without PHASE embedding for top-level commands
+                # Handle orchestrate-tasks specially (flat destination)
+                if [[ "$file" == commands/orchestrate-tasks/orchestrate-tasks.md ]]; then
+                    local dest="$PROJECT_DIR/.claude/commands/agent-os/orchestrate-tasks.md"
+                    # Compile without PHASE embedding for orchestrate-tasks
                     local compiled=$(compile_command "$source" "$dest" "$BASE_DIR" "$EFFECTIVE_PROFILE" "")
                     if [[ "$DRY_RUN" == "true" ]]; then
                         INSTALLED_FILES+=("$dest")
