@@ -78,11 +78,15 @@ cd /path/to/your/project
 
 ### With Beads Support (Optional)
 
-```bash
-# Install beads CLI
-curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+**Beads installs automatically when needed:**
+- When you choose beads mode during spec initialization
+- If beads is not installed, you'll be prompted to:
+  - **(i)nstall beads now** - Automatic installation
+  - **(f)all back to tasks.md** - Use tasks.md instead
 
-# Verify installation
+**Or install beads manually beforehand:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
 bd --version
 ```
 

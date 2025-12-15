@@ -105,22 +105,61 @@ Check if beads is installed and initialize:
 # Check if beads is installed
 if ! command -v bd &> /dev/null; then
     echo ""
-    echo "⚠️  Beads is not installed. Please install it first:"
-    echo "   curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash"
+    echo "⚠️  Beads is not installed."
     echo ""
-    echo "After installing, run this command again."
-    exit 1
+
+    # Ask user what to do
+    read -p "Would you like to (i)nstall beads now or (f)all back to tasks.md? [i/f]: " choice
+
+    case "$choice" in
+        i|I|install)
+            echo ""
+            echo "Installing beads..."
+            curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+
+            # Verify installation
+            if ! command -v bd &> /dev/null; then
+                echo "❌ Beads installation failed. Falling back to tasks.md mode."
+                # Update config to use tasks.md instead
+                sed -i 's/tracking_mode: beads/tracking_mode: tasks_md/' $SPEC_PATH/spec-config.yml
+                echo "✓ Will use tasks.md for issue tracking"
+                # Skip beads initialization
+                beads_mode=false
+            else
+                echo "✓ Beads installed successfully"
+                beads_mode=true
+            fi
+            ;;
+        f|F|fallback|tasks)
+            echo "Falling back to tasks.md mode..."
+            # Update config to use tasks.md instead
+            sed -i 's/tracking_mode: beads/tracking_mode: tasks_md/' $SPEC_PATH/spec-config.yml
+            echo "✓ Will use tasks.md for issue tracking"
+            beads_mode=false
+            ;;
+        *)
+            echo "Invalid choice. Falling back to tasks.md mode..."
+            sed -i 's/tracking_mode: beads/tracking_mode: tasks_md/' $SPEC_PATH/spec-config.yml
+            echo "✓ Will use tasks.md for issue tracking"
+            beads_mode=false
+            ;;
+    esac
+else
+    # Beads is already installed
+    beads_mode=true
 fi
 
-# Initialize beads in spec folder
-cd $SPEC_PATH
-bd init --stealth
+# Initialize beads if we're in beads mode
+if [[ "$beads_mode" == "true" ]]; then
+    cd $SPEC_PATH
+    bd init --stealth
 
-# Update config to mark beads as initialized
-sed -i 's/beads_initialized: false/beads_initialized: true/' spec-config.yml
+    # Update config to mark beads as initialized
+    sed -i 's/beads_initialized: false/beads_initialized: true/' $SPEC_PATH/spec-config.yml
 
-echo "✓ Beads initialized in spec folder"
-cd - > /dev/null
+    echo "✓ Beads initialized in spec folder"
+    cd - > /dev/null
+fi
 ```
 
 **If user chose tasks_md:**

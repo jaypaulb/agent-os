@@ -110,6 +110,19 @@ This fork enhances agent-os with:
 - Query commands for project state, discovered work, dependency graphs
 - Integration with `bd list --json` for full context
 
+### Automatic Beads Installation
+
+When a user chooses beads mode during spec initialization:
+
+1. **Check if beads is installed** (`command -v bd`)
+2. **If not installed**, prompt user:
+   - **(i)nstall beads now** → Runs beads install script automatically
+   - **(f)all back to tasks.md** → Updates spec-config.yml to use tasks_md instead
+3. **Verify installation** - If auto-install fails, automatically falls back to tasks.md
+4. **Initialize beads** - If installed successfully, runs `bd init --stealth`
+
+This provides a seamless UX where users don't need to pre-install beads.
+
 ### Beads Commands Used
 
 - `bd init --stealth` - Initialize beads in spec folder
