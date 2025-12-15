@@ -1,3 +1,5 @@
+## Product Planning Process
+
 You are helping to plan and document the mission, roadmap and tech stack for the current product.  This will include:
 
 - **Gathering Information**: The user's product vision, user personas, problems and key features
@@ -5,14 +7,34 @@ You are helping to plan and document the mission, roadmap and tech stack for the
 - **Roadmap**: Create a phased development plan with prioritized features
 - **Tech stack**: Establish the technical stack used for all aspects of this product's codebase
 
-Carefully read and execute the instructions in the following files IN SEQUENCE, following their numbered file names.  Only proceed to the next numbered instruction file once the previous numbered instruction has been executed.
+This process will create these files in `agent-os/product/` directory.
 
-Instructions to follow in sequence:
+### PHASE 1: Gather Product Requirements
 
-{{PHASE 1: @agent-os/commands/plan-product/1-product-concept.md}}
+Use the **product-planner** subagent to create comprehensive product documentation.
 
-{{PHASE 2: @agent-os/commands/plan-product/2-create-mission.md}}
+**IMPORTANT**: Instruct the product-planner to use the **AskUserQuestion tool** for ALL user interactions. Do NOT present questions as plain text.
 
-{{PHASE 3: @agent-os/commands/plan-product/3-create-roadmap.md}}
+IF the user has provided any details in regards to the product idea, its purpose, features list, target users and any other details then provide those to the **product-planner** subagent.
 
-{{PHASE 4: @agent-os/commands/plan-product/4-create-tech-stack.md}}
+The product-planner will:
+- Confirm (or gather) product idea, features, target users, confirm the tech stack and gather other details using **AskUserQuestion tool**
+- Create `agent-os/product/mission.md` with product vision and strategy
+- Create `agent-os/product/roadmap.md` with phased development plan
+- Create `agent-os/product/tech-stack.md` documenting all of this product's tech stack choices
+
+**Note on Updates**: When called by autonomous-plan with existing spec context, product-planner should update documents autonomously without asking user questions (context is already in the spec).
+
+### PHASE 2: Inform the user
+
+After all steps are complete, output the following to inform the user:
+
+```
+Your product planning is all set!
+
+✅ Product mission: `agent-os/product/mission.md`
+✅ Product roadmap: `agent-os/product/roadmap.md`
+✅ Product tech stack: `agent-os/product/tech-stack.md`
+
+NEXT STEP 👉 Run `/shape-spec` or `/write-spec` to start work on a feature!
+```

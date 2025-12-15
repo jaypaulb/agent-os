@@ -13,15 +13,70 @@ The loop is designed to be fully autonomous once started, with plan-product upda
 
 ## PHASE 1: Initial Product Planning
 
-Use the **product-planner** subagent to create the initial product documentation.
+### Step 1: Check for Existing Product Documentation
 
-Delegate to the product-planner with the user's product vision (if provided). The product-planner will:
-- Gather or confirm product idea, features, target users, tech stack
-- Create `agent-os/product/mission.md` with product vision and strategy
-- Create `agent-os/product/roadmap.md` with phased development plan
-- Create `agent-os/product/tech-stack.md` documenting tech stack choices
+First, check if product planning files already exist:
 
-Once complete, proceed immediately to PHASE 2.
+```bash
+ls -la agent-os/product/
+```
+
+### Step 2: Handle Existing Files (First Run Only)
+
+{{IF product files exist}}
+
+**Read existing files:**
+```bash
+cat agent-os/product/mission.md
+cat agent-os/product/roadmap.md
+cat agent-os/product/tech-stack.md
+```
+
+**Summarize findings to user:**
+
+Display what you found:
+```
+I found existing product planning documentation:
+
+**Mission**: [1-2 sentence summary of mission.md]
+**Roadmap**: [List phases found, e.g., "5 phases identified: Phase 1 - Auth, Phase 2 - Dashboard..."]
+**Tech Stack**: [Key technologies listed, e.g., "React, Node.js, PostgreSQL, etc."]
+```
+
+**Use AskUserQuestion tool to confirm completeness and fill gaps:**
+
+Ask the user using the AskUserQuestion tool:
+- Is the mission statement complete and accurate?
+- Are all phases in the roadmap clearly defined?
+- Is the tech stack documented for all layers (frontend, backend, database, deployment)?
+- Are there any additional requirements, constraints, or features to add?
+
+**IMPORTANT**: Use the AskUserQuestion tool for ALL user interactions. Do NOT present questions as plain text.
+
+Based on user responses, delegate to **product-planner** subagent to:
+- Update any incomplete sections
+- Add missing details
+- Refine existing content
+
+{{ELSE}}
+
+**No existing files - create from scratch:**
+
+Delegate to the **product-planner** subagent with the user's product vision (if provided).
+
+**IMPORTANT**: Instruct product-planner to use AskUserQuestion tool for ALL user interactions when gathering:
+- Product idea, features, target users
+- Phased roadmap structure
+- Tech stack choices
+
+The product-planner will create:
+- `agent-os/product/mission.md` with product vision and strategy
+- `agent-os/product/roadmap.md` with phased development plan
+- `agent-os/product/tech-stack.md` documenting tech stack choices
+
+{{ENDIF}}
+
+Once complete (whether updated or created), proceed immediately to PHASE 2.
 
 ---
 
@@ -63,9 +118,11 @@ Run the write-spec workflow for this specific phase:
 
 This creates `agent-os/specs/[phase-spec]/spec.md` with complete implementation details.
 
-### Sub-Phase C: Update Plan-Product with Learnings
+### Sub-Phase C: Update Plan-Product with Learnings (Autonomous - No User Questions)
 
 After completing the spec for this phase, update the plan-product documents by calling the **product-planner** subagent with the context from the completed spec.
+
+**IMPORTANT**: This is an autonomous update step. Do NOT ask the user any questions. All user input was already gathered during Sub-Phase A (shape-spec) and Sub-Phase B (write-spec).
 
 1. **Read the newly created spec**:
    ```bash
@@ -83,6 +140,7 @@ After completing the spec for this phase, update the plan-product documents by c
    - **Update roadmap.md**: Add technical notes to this phase's entry, mark it complete, update subsequent phases if dependencies changed
    - **Update tech-stack.md**: Add any new libraries, frameworks, or architectural decisions discovered during spec writing
    - **Preserve mission.md**: No changes needed to mission
+   - **Do NOT ask user questions** - all context is in the spec
 
    The product-planner will identify key insights from the spec:
    - Technical dependencies discovered
@@ -90,7 +148,7 @@ After completing the spec for this phase, update the plan-product documents by c
    - Constraints or requirements clarified
    - Integration points with other phases
 
-   And incorporate them into the updated documents.
+   And incorporate them into the updated documents **autonomously**.
 
 Example of what product-planner will add to roadmap.md:
 ```markdown
