@@ -78,6 +78,20 @@ beads_enabled: true
 
 
 # ================================================
+# AUTONOMOUS HARNESS CONFIGURATION
+# ================================================
+
+# ================================================
+# Autonomous coding harness repository
+# Used by /auto-build command to launch autonomous implementation
+#
+# This should point to your fork of the Beads-converted harness
+# ================================================
+autonomous_harness_repo: https://github.com/jaypaulb/Linear-Coding-Agent-Harness.git
+autonomous_harness_branch: main
+
+
+# ================================================
 # PROFILE
 #
 # Use this profile by default.

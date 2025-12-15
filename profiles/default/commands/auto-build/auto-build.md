@@ -70,18 +70,34 @@ Then run /auto-build again.
 
 ---
 
-## PHASE 2: Verify Harness Installation
+## PHASE 2: Install/Update Harness
 
-Check that the autonomous coding harness is installed:
+The autonomous harness is managed as a dependency. Check if it's installed, and install/update if needed:
 
 ```bash
-HARNESS_PATH="/home/jaypaulb/Projects/gh/Linear-Coding-Agent-Harness"
+# Read harness config from agent-os/config.yml
+HARNESS_REPO=$(grep "autonomous_harness_repo:" ~/agent-os/config.yml | cut -d' ' -f2)
+HARNESS_BRANCH=$(grep "autonomous_harness_branch:" ~/agent-os/config.yml | cut -d' ' -f2)
+HARNESS_PATH="$HOME/.agent-os-harness"
 
+echo "Harness repository: $HARNESS_REPO"
+echo "Harness branch: $HARNESS_BRANCH"
+
+# Install or update harness
 if [ -d "$HARNESS_PATH" ]; then
-  echo "✓ Autonomous harness found at $HARNESS_PATH"
+  echo "✓ Harness found at $HARNESS_PATH"
+  echo "Updating harness..."
+  cd "$HARNESS_PATH"
+  git fetch origin
+  git checkout "$HARNESS_BRANCH"
+  git pull origin "$HARNESS_BRANCH"
+  cd -
 else
-  echo "✗ Harness not found. Expected location: $HARNESS_PATH"
-  exit 1
+  echo "Installing harness..."
+  git clone "$HARNESS_REPO" "$HARNESS_PATH"
+  cd "$HARNESS_PATH"
+  git checkout "$HARNESS_BRANCH"
+  cd -
 fi
 
 # Verify key files exist
