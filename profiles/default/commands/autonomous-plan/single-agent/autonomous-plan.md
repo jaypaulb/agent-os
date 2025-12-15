@@ -13,9 +13,13 @@ The loop is designed to be fully autonomous once started, with plan-product upda
 
 ## PHASE 1: Initial Product Planning
 
-Run the plan-product workflow to establish the foundation:
+Use the **product-planner** subagent to create the initial product documentation.
 
-{{@agent-os/commands/plan-product/plan-product.md}}
+Delegate to the product-planner with the user's product vision (if provided). The product-planner will:
+- Gather or confirm product idea, features, target users, tech stack
+- Create `agent-os/product/mission.md` with product vision and strategy
+- Create `agent-os/product/roadmap.md` with phased development plan
+- Create `agent-os/product/tech-stack.md` documenting tech stack choices
 
 Once complete, proceed immediately to PHASE 2.
 
@@ -26,7 +30,7 @@ Once complete, proceed immediately to PHASE 2.
 Read the roadmap file to identify all phases for iterative spec development:
 
 ```bash
-cat agent-os/planning/roadmap.md
+cat agent-os/product/roadmap.md
 ```
 
 Parse the roadmap to extract phase titles. Typically these are organized as:
@@ -61,30 +65,34 @@ This creates `agent-os/specs/[phase-spec]/spec.md` with complete implementation 
 
 ### Sub-Phase C: Update Plan-Product with Learnings
 
-After completing the spec for this phase, update the plan-product documents to incorporate learnings:
+After completing the spec for this phase, update the plan-product documents by calling the **product-planner** subagent with the context from the completed spec.
 
 1. **Read the newly created spec**:
    ```bash
    cat agent-os/specs/[phase-spec]/spec.md
    ```
 
-2. **Identify key insights** that should inform subsequent phases:
+2. **Delegate to product-planner** with the following context:
+
+   Provide the product-planner with:
+   - The completed spec for this phase (`agent-os/specs/[phase-spec]/spec.md`)
+   - The current roadmap (`agent-os/product/roadmap.md`)
+   - The current tech stack (`agent-os/product/tech-stack.md`)
+
+   Instruct the product-planner to:
+   - **Update roadmap.md**: Add technical notes to this phase's entry, mark it complete, update subsequent phases if dependencies changed
+   - **Update tech-stack.md**: Add any new libraries, frameworks, or architectural decisions discovered during spec writing
+   - **Preserve mission.md**: No changes needed to mission
+
+   The product-planner will identify key insights from the spec:
    - Technical dependencies discovered
-   - Architectural decisions made
+   - Architectural decisions made (e.g., "JWT chosen for session management")
    - Constraints or requirements clarified
    - Integration points with other phases
 
-3. **Update roadmap.md** with refined details:
-   - Add technical notes to this phase's entry
-   - Update subsequent phase descriptions if dependencies changed
-   - Clarify phase boundaries based on what was learned
+   And incorporate them into the updated documents.
 
-4. **Update tech-stack.md** if new technical decisions were made:
-   - Add libraries or frameworks chosen for this phase
-   - Document integration patterns discovered
-   - Note any tech stack adjustments for future phases
-
-Example update to roadmap.md:
+Example of what product-planner will add to roadmap.md:
 ```markdown
 ### Phase 1: User Authentication ✓
 **Status**: Spec Complete
@@ -143,10 +151,10 @@ Display the following message to the user:
 ```
 Autonomous planning loop complete!
 
-**Product Planning**:
-- Mission: agent-os/planning/mission.md
-- Roadmap: agent-os/planning/roadmap.md
-- Tech Stack: agent-os/planning/tech-stack.md
+**Product Planning** (updated iteratively):
+- Mission: agent-os/product/mission.md
+- Roadmap: agent-os/product/roadmap.md (✓ updated after each phase)
+- Tech Stack: agent-os/product/tech-stack.md (✓ updated after each phase)
 
 **Phases Completed**:
 [List each phase with its spec location]
@@ -155,8 +163,11 @@ Autonomous planning loop complete!
 - Phase 3: [Phase Title] → agent-os/specs/[phase-spec]/spec.md
 [etc.]
 
-**Plan-Product Updates**:
-The roadmap and tech stack were updated after each phase to incorporate learnings and refine subsequent phase requirements.
+**Iterative Updates**:
+The product-planner was called after each phase to update roadmap.md and tech-stack.md with:
+- Technical decisions made during spec writing
+- Dependencies discovered between phases
+- Refined requirements for subsequent phases
 
 {{IF tracking_mode_beads}}
 **Beads Issues Created**:
