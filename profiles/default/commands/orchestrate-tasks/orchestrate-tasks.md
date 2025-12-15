@@ -172,39 +172,194 @@ beads:
 Note: Atom and molecule agents work on child issues automatically based on beads hierarchy.
 
 {{ELSE}}
-Next we must determine which subagents should be assigned to which task groups. Ask the user to provide this info using the following request to user and WAIT for user's response:
+Next we must determine which subagents should be assigned to which task groups.
+
+**Autonomous Agent Assignment Process:**
+
+For each task group in `tasks.md`:
+
+1. **Read suggested agent** from task group metadata (look for `**Suggested Agent:**` line)
+2. **Analyze task content** to compute congruence score:
+   - Check keywords in task group name and description
+   - Validate against atomic design patterns
+   - Score: 0-100% congruence between suggested agent and task content
+
+3. **Agent assignment decision logic:**
+
+```python
+if congruence >= 80:
+    # High congruence - use suggested agent
+    assigned_agent = suggested_agent
+    log(f"✓ Using suggested agent '{suggested_agent}' for '{task_group}' (congruence: {congruence}%)")
+
+elif congruence >= 50:
+    # Medium congruence - pick better agent autonomously
+    better_agent = infer_best_agent(task_group_content)
+    assigned_agent = better_agent
+    log(f"⚠ Overriding suggested agent '{suggested_agent}' → '{better_agent}' for '{task_group}' (congruence: {congruence}%, better match found)")
+
+else:
+    # Low congruence - pick correct agent autonomously
+    correct_agent = infer_best_agent(task_group_content)
+    assigned_agent = correct_agent
+    log(f"⚠ Rejecting suggested agent '{suggested_agent}' → using '{correct_agent}' for '{task_group}' (low congruence: {congruence}%)")
+```
+
+**Congruence Scoring Heuristics:**
+
+```markdown
+atom-writer:
+  - Keywords: "atom", "pure function", "utility", "validator", "formatter", "constant", "calculation"
+  - Anti-patterns: "database", "API", "component", "integration", "molecule"
+  - Score boost: +30 if task name contains "atom", +20 if description mentions "zero dependencies"
+
+molecule-composer:
+  - Keywords: "molecule", "compose", "helper", "service", "2-3 atoms", "composition"
+  - Anti-patterns: "database", "API endpoint", "UI component", "model", "controller"
+  - Score boost: +30 if task name contains "molecule", +20 if description mentions "compose"
+
+database-layer-builder:
+  - Keywords: "database", "model", "migration", "schema", "association", "ORM", "SQL"
+  - Anti-patterns: "API endpoint", "controller", "UI", "component", "frontend"
+  - Score boost: +30 if task name contains "database" or "model", +20 if mentions "migration"
+
+api-layer-builder:
+  - Keywords: "API", "endpoint", "controller", "REST", "authentication", "authorization", "route"
+  - Anti-patterns: "database model", "UI", "component", "frontend", "CSS"
+  - Score boost: +30 if task name contains "API" or "endpoint", +20 if mentions "controller"
+
+ui-component-builder:
+  - Keywords: "UI", "component", "form", "page", "view", "CSS", "responsive", "frontend"
+  - Anti-patterns: "database", "model", "API endpoint", "controller", "migration"
+  - Score boost: +30 if task name contains "UI" or "component", +20 if mentions "frontend"
+
+test-writer-molecule:
+  - Keywords: "test", "molecule", "unit test", "composition test"
+  - Anti-patterns: "integration", "organism", "E2E"
+  - Score boost: +40 if both "test" AND "molecule" present
+
+test-writer-organism:
+  - Keywords: "test", "organism", "integration test", "layer test"
+  - Anti-patterns: "unit test", "molecule", "atom"
+  - Score boost: +40 if both "test" AND "organism" present
+
+test-gap-analyzer:
+  - Keywords: "test gap", "coverage", "analysis", "fill gaps", "additional tests"
+  - Anti-patterns: "unit test", "write tests for X"
+  - Score boost: +50 if "gap" or "coverage" mentioned
+
+integration-assembler:
+  - Keywords: "integration", "wire", "E2E", "assemble", "connect layers", "full system"
+  - Anti-patterns: "unit test", "atom", "molecule", "single layer"
+  - Score boost: +40 if "integration" or "wire" mentioned
+```
+
+**Agent Inference Algorithm:**
+
+```python
+def infer_best_agent(task_group_content):
+    scores = {}
+    for agent in ALL_AGENTS:
+        score = 0
+
+        # Keyword matching
+        for keyword in agent.keywords:
+            if keyword.lower() in task_group_content.lower():
+                score += 10
+
+        # Anti-pattern penalty
+        for anti_pattern in agent.anti_patterns:
+            if anti_pattern.lower() in task_group_content.lower():
+                score -= 20
+
+        # Apply score boosts
+        score += agent.compute_boost(task_group_content)
+
+        scores[agent.name] = max(0, score)  # Floor at 0
+
+    # Return highest-scoring agent
+    return max(scores, key=scores.get)
+```
+
+**Implementation:**
+
+```bash
+# Read tasks.md and extract task groups with suggested agents
+while IFS= read -r task_group; do
+    # Parse task group name
+    name=$(extract_task_group_name "$task_group")
+
+    # Parse suggested agent (if present)
+    suggested_agent=$(grep -A 5 "#### $name" tasks.md | grep "Suggested Agent:" | sed 's/.*`\(.*\)`.*/\1/')
+
+    # If no suggestion, infer from content
+    if [[ -z "$suggested_agent" ]]; then
+        echo "⚠ No suggested agent for '$name' - inferring from content..."
+        assigned_agent=$(infer_best_agent "$task_group")
+        echo "→ Assigned: $assigned_agent"
+    else
+        # Calculate congruence
+        congruence=$(compute_congruence "$task_group" "$suggested_agent")
+
+        if [[ "$congruence" -ge 80 ]]; then
+            # High congruence - use suggestion
+            assigned_agent="$suggested_agent"
+            echo "✓ Using suggested agent '$assigned_agent' for '$name' ($congruence% congruence)"
+        elif [[ "$congruence" -ge 50 ]]; then
+            # Medium congruence - pick better agent
+            better_agent=$(infer_best_agent "$task_group")
+            assigned_agent="$better_agent"
+            echo "⚠ Overriding '$suggested_agent' → '$better_agent' for '$name' ($congruence% congruence, better match)"
+        else
+            # Low congruence - reject suggestion
+            correct_agent=$(infer_best_agent "$task_group")
+            assigned_agent="$correct_agent"
+            echo "⚠ Rejecting '$suggested_agent' → using '$correct_agent' for '$name' (low congruence: $congruence%)"
+        fi
+    fi
+
+    # Add to orchestration.yml
+    echo "  - name: $name" >> orchestration.yml
+    echo "    claude_code_subagent: $assigned_agent" >> orchestration.yml
+done < <(extract_task_groups tasks.md)
+```
+
+**Only ask user if truly ambiguous:**
+
+If multiple agents score equally (within 10 points) and no clear winner:
 
 ```
-Please specify the name of each subagent to be assigned to each task group:
+Multiple agents could handle task group '[task-group-name]':
+- database-layer-builder (score: 45)
+- api-layer-builder (score: 42)
 
-1. [task-group-name]
-2. [task-group-name]
-3. [task-group-name]
-[repeat for each task-group you've added to orchestration.yml]
-
-Suggested atomic design agents:
-- atom-writer (for pure functions, utilities)
-- molecule-composer (for simple compositions)
-- database-layer-builder (for database/models)
-- api-layer-builder (for API endpoints)
-- ui-component-builder (for UI components)
-- implementer (for full-stack task groups)
-
-Simply respond with the subagent names and corresponding task group number and I'll update orchestration.yml accordingly.
+Which agent should handle this? [database-layer-builder/api-layer-builder]:
 ```
 
-Using the user's responses, update `orchestration.yml` to specify those subagent names. `orchestration.yml` should end up looking like this:
+**Result:** `orchestration.yml` populated with validated agent assignments, minimal user input.
 
 ```yaml
 task_groups:
-  - name: [task-group-name]
-    claude_code_subagent: [subagent-name]
-  - name: [task-group-name]
-    claude_code_subagent: [subagent-name]
-  - name: [task-group-name]
-    claude_code_subagent: [subagent-name]
-  # Repeat for each task group found in tasks.md
+  - name: Core Utilities and Pure Functions
+    claude_code_subagent: atom-writer
+  - name: Composed Helpers and Services
+    claude_code_subagent: molecule-composer
+  - name: Data Models and Migrations
+    claude_code_subagent: database-layer-builder
+  - name: API Endpoints and Controllers
+    claude_code_subagent: api-layer-builder
+  - name: UI Components and Pages
+    claude_code_subagent: ui-component-builder
+  - name: Molecule-Level Testing
+    claude_code_subagent: test-writer-molecule
+  - name: Organism-Level Testing
+    claude_code_subagent: test-writer-organism
+  - name: Test Gap Analysis
+    claude_code_subagent: test-gap-analyzer
+  - name: System Integration and E2E Verification
+    claude_code_subagent: integration-assembler
 ```
+
 {{ENDIF tracking_mode_beads}}
 
 ### NEXT: Choose Execution Mode (Parallel or Sequential)
