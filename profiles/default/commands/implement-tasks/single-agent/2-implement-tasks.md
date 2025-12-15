@@ -7,6 +7,44 @@ Now that you have the task group(s) to be implemented, proceed with implementati
 Display a summary of what was implemented.
 
 {{IF tracking_mode_beads}}
+Generate implementation summary using BV diff tracking:
+
+```bash
+cd agent-os/specs/[this-spec]/
+
+# Source BV helpers
+source ../../../workflows/implementation/bv-helpers.md
+
+if bv_available; then
+    echo ""
+    echo "=== Implementation Summary ==="
+
+    # Get diff since session start
+    SESSION_START=$(cat .beads/session-start-commit 2>/dev/null || echo "HEAD~1")
+    DIFF=$(get_session_diff "$SESSION_START")
+
+    # Display accomplishments
+    echo "$DIFF" | jq -r '
+        "Closed: \(.changes.closed_issues | length) issues",
+        "Created: \(.changes.new_issues | length) issues",
+        "Modified: \(.changes.modified_issues | length) issues",
+        "",
+        "Closed issues:",
+        (.changes.closed_issues[] | "  ✓ \(.id): \(.title)")
+    '
+
+    # Warn if cycles introduced
+    NEW_CYCLES=$(echo "$DIFF" | jq -r '.graph_changes.new_cycles | length')
+    if [[ "$NEW_CYCLES" -gt 0 ]]; then
+        echo ""
+        echo "⚠️  WARNING: $NEW_CYCLES new cycles introduced during this session"
+        echo "$DIFF" | jq -r '.graph_changes.new_cycles[] | "  " + (. | join(" → "))'
+    fi
+
+    echo ""
+fi
+```
+
 Check beads status to see if all work is complete:
 
 ```bash

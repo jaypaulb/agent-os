@@ -90,6 +90,61 @@ curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/insta
 bd --version
 ```
 
+### BV (Beads Viewer) - Graph Intelligence
+
+**BV provides advanced graph analysis for beads mode:**
+
+BV enhances beads workflows with deterministic graph intelligence, enabling agents to make smarter decisions about what to work on next.
+
+**Features enabled with BV:**
+- ✅ **Smart execution planning** - Impact-aware task selection (agents pick work that unblocks the most)
+- ✅ **Priority recommendations** - Detect misaligned priorities based on graph metrics
+- ✅ **Graph insights** - Identify bottlenecks, keystones, and foundational work
+- ✅ **Cycle detection** - Prevent circular dependencies that cause deadlocks
+- ✅ **Time-travel diffs** - Track changes between sessions for regression detection
+- ✅ **Recipe system** - Quick filtered views (actionable, high-impact, blocked, stale, recent)
+- ✅ **Parallel execution** - Multi-agent coordination for independent work streams
+- ✅ **Graceful fallback** - If BV unavailable, uses basic beads commands (no hard failures)
+
+**Installation:**
+
+BV installs automatically when you choose beads mode. If not installed:
+
+```bash
+# Manual installation (adjust command based on actual BV install method)
+cargo install bv
+
+# Verify
+bv --version
+bv --robot-help  # See AI agent commands
+```
+
+**How BV helps agents:**
+
+Without BV (greedy selection):
+```bash
+# Agent picks first ready item
+bd ready | head -1  # bd-101
+
+# May not be the best choice!
+```
+
+With BV (impact-aware selection):
+```bash
+# Agent picks highest-impact ready item
+bv --robot-plan | jq '.tracks[0].items[0]'  # bd-201
+
+# Unblocks 8 downstream tasks vs 2 for bd-101
+```
+
+**Graph metrics explained:**
+- **Bottlenecks (Betweenness)**: Issues that bridge different parts of the graph
+- **Keystones (Critical path)**: Issues on the longest dependency chain
+- **Influencers (Eigenvector)**: Foundational work connected to many important tasks
+- **Cycle detection**: Prevents deadlocks from circular dependencies
+
+See `/workflows/implementation/bv-*.md` workflows for detailed usage.
+
 ### Update to Latest
 
 ```bash

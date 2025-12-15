@@ -70,6 +70,82 @@ Then run /auto-build again.
 
 ---
 
+## PHASE 1.5: Check for Changes and Cycles (BV)
+
+Before starting the build, check what changed since the last build and verify no circular dependencies exist:
+
+```bash
+cd agent-os/specs/[this-spec]/
+
+# Source BV helpers
+source ../../../workflows/implementation/bv-helpers.md
+
+if bv_available; then
+    echo ""
+    echo "=== Build Change Tracking ==="
+
+    # Track changes since last build
+    LAST_BUILD_COMMIT=$(cat .beads/last-build-commit 2>/dev/null || echo "HEAD~1")
+
+    echo "Checking changes since last build ($LAST_BUILD_COMMIT)..."
+    DIFF=$(bv --robot-diff --diff-since "$LAST_BUILD_COMMIT" --format json)
+
+    # Log summary
+    NEW_ISSUES=$(echo "$DIFF" | jq -r '.changes.new_issues | length')
+    CLOSED_ISSUES=$(echo "$DIFF" | jq -r '.changes.closed_issues | length')
+    MODIFIED_ISSUES=$(echo "$DIFF" | jq -r '.changes.modified_issues | length')
+    NEW_CYCLES=$(echo "$DIFF" | jq -r '.graph_changes.new_cycles | length')
+
+    echo "Changes detected:"
+    echo "  New issues: $NEW_ISSUES"
+    echo "  Closed issues: $CLOSED_ISSUES"
+    echo "  Modified issues: $MODIFIED_ISSUES"
+    echo "  New cycles: $NEW_CYCLES"
+
+    # Warn if cycles introduced since last build
+    if [[ "$NEW_CYCLES" -gt 0 ]]; then
+        echo ""
+        echo "❌ WARNING: New dependency cycles detected since last build!"
+        echo "$DIFF" | jq -r '.graph_changes.new_cycles[] | "  Cycle: " + (. | join(" → "))'
+        echo ""
+
+        # Optionally block build
+        read -p "Continue build despite cycles? [y/N]: " continue_build
+        if [[ ! "$continue_build" =~ ^[Yy]$ ]]; then
+            echo "Build aborted due to circular dependencies."
+            echo "Fix cycles before running auto-build."
+            exit 1
+        fi
+    fi
+
+    # Check for existing cycles (even if not new)
+    echo ""
+    echo "=== Cycle Detection ==="
+    if ! check_cycles; then
+        echo ""
+        echo "❌ ERROR: Circular dependencies exist in the graph!"
+        echo "These must be resolved before autonomous build can proceed."
+        echo ""
+        read -p "Attempt build anyway (not recommended)? [y/N]: " force_build
+        if [[ ! "$force_build" =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    else
+        echo "✓ No circular dependencies detected"
+    fi
+
+    # Store current commit for next build comparison
+    git rev-parse HEAD > .beads/last-build-commit
+    echo ""
+else
+    echo ""
+    echo "BV unavailable - skipping change tracking and cycle detection"
+    echo ""
+fi
+```
+
+---
+
 ## PHASE 2: Install/Update Harness
 
 The autonomous harness is managed as a dependency. Check if it's installed, and install/update if needed:

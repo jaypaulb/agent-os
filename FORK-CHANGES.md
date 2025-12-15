@@ -135,6 +135,250 @@ This provides a seamless UX where users don't need to pre-install beads.
 
 ---
 
+## 2.5. BV (Beads Viewer) Robot Protocol Integration (7 New Workflows, 9 Modified Files)
+
+### Overview
+
+Integrated `bv` (beads viewer) robot protocol to provide deterministic graph intelligence for AI agents. BV offloads complex graph algorithms from LLMs to specialized tooling, enabling smarter task selection and dependency management.
+
+**Architecture:** Hybrid approach
+- **BV for intelligence** - Execution planning, priority recommendations, graph insights (read-only)
+- **BD for mutations** - Creating/updating/closing issues (source of truth)
+- **Graceful fallback** - If BV unavailable, falls back to basic `bd` commands
+
+### New Workflow Files (7 Created)
+
+**`profiles/default/workflows/implementation/bv-helpers.md`** (NEW)
+- Reusable bash helper functions for BV detection and fallback
+- Functions: `bv_available()`, `get_execution_plan()`, `get_priority_recommendations()`, `get_session_diff()`, `get_graph_insights()`, `check_cycles()`, `get_recipe()`, `list_recipes()`
+- All functions gracefully degrade if BV unavailable
+
+**`profiles/default/workflows/implementation/bv-priority-analysis.md`** (NEW)
+- Graph-based priority recommendation workflow
+- Detects priority misalignments (low priority but high importance)
+- Confidence-scored suggestions (>0.8 = high confidence)
+- Integration with task selection and orchestration
+
+**`profiles/default/workflows/implementation/bv-diff-tracking.md`** (NEW)
+- Time-travel diff tracking for session-to-session changes
+- Session summaries (what was accomplished?)
+- Regression detection (new cycles introduced?)
+- Prepared for auto-build harness integration
+
+**`profiles/default/workflows/implementation/bv-graph-insights.md`** (NEW)
+- Structural graph intelligence workflow
+- Metrics explained:
+  - **Bottlenecks (Betweenness)**: Issues bridging different graph parts
+  - **Keystones (Critical path)**: Longest dependency chains
+  - **Influencers (Eigenvector)**: Foundational work connected to important tasks
+  - **Hubs/Authorities (HITS)**: Aggregators and prerequisites
+- Agent decision examples and real-world scenarios
+
+**`profiles/default/workflows/implementation/bv-cycle-detection.md`** (NEW)
+- Circular dependency detection and prevention
+- Pre-flight checks before adding dependencies
+- Post-creation validation in create-beads-issues workflow
+- Cycle fixing strategies (remove, extract, reorder, split)
+
+**`profiles/default/workflows/implementation/bv-recipes.md`** (NEW)
+- Pre-built filtered views for common queries
+- Built-in recipes: `actionable`, `high-impact`, `blocked`, `stale`, `recent`
+- Integration with execution planning
+- Custom recipe support
+
+**`profiles/default/workflows/implementation/bv-parallel-execution.md`** (NEW)
+- Multi-agent coordination using track-based planning
+- Lock mechanism to prevent work conflicts
+- Track assignment and parallel orchestration
+- Performance considerations and speedup calculations
+
+### Modified Workflow Files (9 Updated)
+
+**1. `profiles/default/workflows/specification/initialize-spec.md`**
+- Added BV installation prompt after beads installation (line 163)
+- Prompts: "(i)nstall bv now or (s)kip?"
+- Updates `spec-config.yml` with `bv_enabled: true/false`
+- Automatic installation via `cargo install bv` (placeholder command)
+
+**2. `profiles/default/workflows/implementation/implement-with-beads.md`**
+- Replaced greedy task selection with execution plan logic (lines 67-131)
+- Smart selection: highest-impact actionable issue (unblocks most downstream tasks)
+- Added structural warnings for bottlenecks, keystones, influencers (lines 103-138)
+- Added session summary at end with diff tracking (lines 518-583)
+
+**3. `profiles/default/workflows/implementation/create-beads-issues.md`**
+- Added cycle detection validation after all dependencies created (Step 9.5, lines 424-460)
+- Validates dependency graph has no circular dependencies
+- Exits with error if cycles detected
+
+**4. `profiles/default/commands/implement-tasks/single-agent/1-determine-tasks.md`**
+- Enhanced with BV execution plan display (lines 7-84)
+- Shows parallel tracks available
+- Displays recommended next task with reasoning (impact = unblocks count)
+- Recipe quick checks (actionable, high-impact, blocked counts)
+
+**5. `profiles/default/commands/implement-tasks/single-agent/2-implement-tasks.md`**
+- Added BV session summary before completion check (lines 10-46)
+- Displays closed/created/modified issue counts
+- Warns if cycles introduced during session
+
+**6. `profiles/default/commands/orchestrate-tasks/orchestrate-tasks.md`**
+- Added priority analysis step (lines 52-114)
+- Displays priority recommendations with confidence scores
+- Optional auto-application of high-confidence priority updates
+- Added parallel execution option (lines 210-265)
+- Detects independent tracks, offers parallel vs sequential choice
+
+**7. `profiles/default/commands/auto-build/auto-build.md`**
+- Added Phase 1.5: Check for Changes and Cycles (lines 73-145)
+- Diff tracking since last build
+- Cycle regression detection (warns if new cycles introduced)
+- Pre-flight cycle check before build starts
+- Stores commit reference for next build comparison
+
+**8. `README.md`**
+- Added BV section with feature overview (lines 93-146)
+- Installation instructions
+- Example: greedy vs impact-aware selection
+- Graph metrics explained
+
+**9. `FORK-CHANGES.md`**
+- This section! Technical documentation of BV integration
+
+### BV Commands Used
+
+- `bv --robot-plan --format json` - Execution planning with track-based parallelization
+- `bv --robot-priority --format json` - Priority recommendations based on graph metrics
+- `bv --robot-diff --diff-since <ref> --format json` - Time-travel diffs between commits/sessions
+- `bv --robot-insights --format json` - Graph metrics (bottlenecks, keystones, influencers, cycles)
+- `bv --recipe <name>` - Quick filtered views (actionable, high-impact, blocked, stale, recent)
+- `bv --robot-recipes --format json` - List available recipes
+
+### Spec Configuration Update
+
+**`agent-os/specs/[spec-name]/spec-config.yml`** - Added field:
+```yaml
+tracking_mode: beads
+created: 2025-12-15T10:30:00Z
+beads_initialized: true
+bv_enabled: true  # NEW: Whether bv is available for graph intelligence
+```
+
+### Key Integration Points
+
+**1. Smart Task Selection (Phase 2 - Highest Priority)**
+
+Agents use `bv --robot-plan` instead of greedy `bd ready`:
+
+```bash
+# Before (greedy)
+bd ready | head -1  # First ready item
+
+# After (impact-aware)
+bv --robot-plan | jq '.tracks[0].items[0]'  # Highest-impact ready item
+```
+
+Selects work that unblocks the most downstream tasks.
+
+**2. Priority Intelligence (Phase 3 - High Priority)**
+
+Detects priority misalignments during orchestration:
+
+```bash
+# Detect: Low priority but high structural importance
+bv --robot-priority | jq '.recommendations[] | select(.direction == "increase")'
+
+# Example output:
+# bd-101: P3 → P1 (95% confidence)
+# Reason: Critical path item - blocks 8 downstream tasks
+```
+
+**3. Cycle Detection (Phase 6 - High Priority)**
+
+Prevents deadlocks from circular dependencies:
+
+```bash
+# After creating beads issues
+if ! check_cycles; then
+    echo "❌ Circular dependencies detected!"
+    bv --robot-insights | jq '.cycles'  # Show cycle paths
+    exit 1
+fi
+```
+
+**4. Time-Travel Diffs (Phase 4 - Medium Priority)**
+
+Session summaries show what changed:
+
+```bash
+# At end of session
+SESSION_START=$(cat .beads/session-start-commit)
+bv --robot-diff --diff-since "$SESSION_START" | jq '.changes.closed_issues'
+# Shows all issues closed this session
+```
+
+**5. Graph Insights (Phase 5 - High Priority)**
+
+Structural warnings for critical work:
+
+```bash
+# If selected issue is a bottleneck
+IS_BOTTLENECK=$(bv --robot-insights | jq '.bottlenecks[] | select(.id == $CURRENT_ISSUE_ID)')
+
+if [[ -n "$IS_BOTTLENECK" ]]; then
+    echo "⚠️  BOTTLENECK - This issue bridges multiple work streams"
+fi
+```
+
+**6. Recipe System (Phase 7 - Medium Priority)**
+
+Quick filtered views:
+
+```bash
+bv --recipe actionable  # Unblocked ready work
+bv --recipe high-impact  # Top PageRank/betweenness scores
+bv --recipe blocked     # Issues waiting on dependencies
+```
+
+**7. Parallel Execution (Phase 8 - Medium Priority)**
+
+Multi-agent coordination:
+
+```bash
+TRACK_COUNT=$(bv --robot-plan | jq '.tracks | length')
+# If ≥2 tracks, offer parallel execution option
+# Launch one agent per track
+```
+
+### Graceful Fallback
+
+All BV features degrade gracefully:
+
+| Feature | BV Available | BV Unavailable |
+|---------|--------------|----------------|
+| Task selection | Impact-aware planning | Basic `bd ready` (greedy) |
+| Priority recommendations | Graph-based suggestions | Empty recommendations |
+| Cycle detection | Pre-flight validation | Permissive (skip check) |
+| Session diffs | Full change tracking | Empty diff object |
+| Graph insights | Bottleneck/keystone analysis | Empty insights |
+| Recipes | Filtered views | Empty arrays |
+| Parallel execution | Track-based coordination | Sequential execution |
+
+No hard failures - agents continue working with reduced intelligence if BV is unavailable.
+
+### Testing Phases
+
+1. **BV Installation** - Auto-install prompt, fallback to tasks.md
+2. **Smart Task Selection** - Verify impact-aware selection vs greedy
+3. **Priority Intelligence** - Test with misaligned priorities
+4. **Time-Travel Diffs** - Track changes across sessions
+5. **Graph Insights** - Complex spec with shared dependencies
+6. **Cycle Detection** - Intentional cycle creation, verify detection
+7. **Recipe System** - All built-in recipes functional
+8. **Parallel Execution** - Independent tracks, multi-agent coordination
+
+---
+
 ## 3. Configuration System (3 Modified Files)
 
 ### `config.yml` (MODIFIED)

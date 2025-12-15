@@ -66,38 +66,105 @@ bd list --json | jq -r '.[] | select(.assignee=="[your-agent-name]" and .blocked
 
 ## Step 2: Select Work from Ready Queue
 
-### Find Unblocked Work
+### Smart Task Selection with Execution Planning
 
 ```bash
-# View all ready work
-bd ready
+# Source BV helpers for intelligent task selection
+source "$(dirname "$0")/bv-helpers.md"
 
-# Filter by your assignment
-bd ready --assignee [your-agent-name]
+# Determine agent context
+AGENT_NAME="[your-agent-name]"  # e.g., atom-writer, database-layer-builder
+ATOMIC_LEVEL="[your-level-tag]"  # e.g., atom, molecule, database, api, ui
 
-# Filter by atomic level tag
-bd ready --tag atom           # For atom-writer
-bd ready --tag molecule       # For molecule-composer
-bd ready --tag database       # For database-layer-builder
-bd ready --tag api            # For api-layer-builder
-bd ready --tag ui             # For ui-component-builder
-```
+# Get execution plan (uses BV if available, falls back to bd ready)
+EXEC_PLAN=$(get_execution_plan)
 
-### Select Issue to Work On
+if bv_available; then
+    # Use graph-based selection for maximum impact
+    echo "Using BV execution planning for smart task selection..."
 
-```bash
-# Choose highest priority unblocked issue
-CURRENT_ISSUE_ID="bd-xxxx"  # From bd ready output
+    # Extract highest-impact actionable issue for this agent's level
+    NEXT_ISSUE=$(echo "$EXEC_PLAN" | jq -r \
+        --arg agent "$AGENT_NAME" \
+        --arg level "$ATOMIC_LEVEL" \
+        '.tracks[] | .items[] |
+         select(.tags[]? == $level) |
+         select(.assignee == $agent or .assignee == null) |
+         {id: .id, impact: .unblocks_count, priority: .priority} |
+         @json' | \
+        jq -s 'sort_by(-.impact, .priority) | .[0]')
+
+    CURRENT_ISSUE_ID=$(echo "$NEXT_ISSUE" | jq -r '.id')
+    IMPACT=$(echo "$NEXT_ISSUE" | jq -r '.impact')
+
+    if [[ -n "$CURRENT_ISSUE_ID" && "$CURRENT_ISSUE_ID" != "null" ]]; then
+        echo "Selected issue: $CURRENT_ISSUE_ID (unblocks $IMPACT downstream tasks)"
+
+        # Check for structural significance
+        INSIGHTS=$(get_graph_insights)
+
+        # Check if this issue is a bottleneck
+        IS_BOTTLENECK=$(echo "$INSIGHTS" | jq -r --arg id "$CURRENT_ISSUE_ID" \
+            '.bottlenecks[] | select(.id == $id) | .value')
+
+        # Check if this issue is a keystone
+        IS_KEYSTONE=$(echo "$INSIGHTS" | jq -r --arg id "$CURRENT_ISSUE_ID" \
+            '.keystones[] | select(.id == $id) | .value')
+
+        # Check if this issue is an influencer
+        IS_INFLUENCER=$(echo "$INSIGHTS" | jq -r --arg id "$CURRENT_ISSUE_ID" \
+            '.influencers[] | select(.id == $id) | .value')
+
+        # Display structural warnings
+        if [[ -n "$IS_BOTTLENECK" && "$IS_BOTTLENECK" != "null" ]]; then
+            echo ""
+            echo "⚠️  BOTTLENECK (betweenness: $IS_BOTTLENECK)"
+            echo "   This issue bridges different parts of the graph."
+            echo "   Completing it will unblock multiple independent work streams."
+        fi
+
+        if [[ -n "$IS_KEYSTONE" && "$IS_KEYSTONE" != "null" ]]; then
+            echo ""
+            echo "⚠️  CRITICAL PATH (path length: $IS_KEYSTONE)"
+            echo "   This issue is on the longest dependency chain."
+            echo "   Delays here will push back the entire project timeline."
+        fi
+
+        if [[ -n "$IS_INFLUENCER" && "$IS_INFLUENCER" != "null" ]]; then
+            echo ""
+            echo "⚠️  FOUNDATIONAL WORK (eigenvector: $IS_INFLUENCER)"
+            echo "   This issue is connected to many important downstream tasks."
+            echo "   Implement with extra care and comprehensive testing."
+        fi
+    fi
+else
+    # Fallback: Basic bd ready selection
+    echo "BV unavailable - using basic task selection..."
+    CURRENT_ISSUE_ID=$(bd ready --assignee "$AGENT_NAME" --tag "$ATOMIC_LEVEL" --limit 1 | head -1)
+fi
+
+# Verify we have work to do
+if [[ -z "$CURRENT_ISSUE_ID" || "$CURRENT_ISSUE_ID" == "null" ]]; then
+    echo "No actionable work found for $AGENT_NAME at $ATOMIC_LEVEL level"
+    exit 0
+fi
 
 # View full details
 bd show $CURRENT_ISSUE_ID
 ```
 
-**Selection Criteria:**
+**Selection Criteria (BV Mode):**
+1. Unblocked (appears in execution plan tracks)
+2. Assigned to you (or unassigned)
+3. Matches your atomic level tag
+4. **Maximum impact** (unblocks the most downstream tasks)
+5. Secondary sort by priority
+
+**Selection Criteria (Fallback Mode):**
 1. Unblocked (shows in `bd ready`)
 2. Assigned to you
-3. Matches your atomic level (atom → molecule → organism)
-4. Highest priority
+3. Matches your atomic level tag
+4. First available (greedy selection)
 
 ---
 
@@ -482,6 +549,75 @@ bd update [id] -p 1  # Higher priority
 # Add tags
 bd update [id] --tag additional-tag
 ```
+
+---
+
+## Step 8: Session Summary (End of Work Session)
+
+At the end of your work session, generate a summary of what was accomplished:
+
+```bash
+# Source BV helpers
+source "$(dirname "$0")/bv-helpers.md"
+
+if bv_available; then
+    # Get session start reference (should be set at session start)
+    SESSION_START=$(cat .beads/session-start-commit 2>/dev/null || echo "HEAD~1")
+
+    echo ""
+    echo "=== Session Summary ==="
+    echo ""
+
+    # Get diff since session start
+    DIFF=$(get_session_diff "$SESSION_START")
+
+    # Display accomplishments
+    echo "$DIFF" | jq -r '
+        "Work completed:",
+        "  • \(.changes.closed_issues | length) issues closed",
+        "  • \(.changes.new_issues | length) new issues discovered",
+        "  • \(.changes.modified_issues | length) issues updated",
+        "",
+        "Closed issues:",
+        (.changes.closed_issues[] | "  ✓ \(.id): \(.title)"),
+        "",
+        (.changes.new_issues | if length > 0 then
+            "Discovered issues:",
+            (.[] | "  + \(.id): \(.title)")
+        else "" end)
+    '
+
+    # Warn if cycles introduced
+    NEW_CYCLES=$(echo "$DIFF" | jq -r '.graph_changes.new_cycles | length')
+    if [[ "$NEW_CYCLES" -gt 0 ]]; then
+        echo ""
+        echo "⚠️  WARNING: $NEW_CYCLES new cycles introduced during this session"
+        echo "$DIFF" | jq -r '.graph_changes.new_cycles[] | "  " + (. | join(" → "))'
+    fi
+
+    # Update session start for next session
+    git rev-parse HEAD > .beads/session-start-commit
+else
+    # Fallback: Basic summary without BV
+    echo ""
+    echo "=== Session Summary ==="
+    echo ""
+    bd list --status closed | tail -5 | while read -r line; do
+        echo "  ✓ $line"
+    done
+fi
+```
+
+**Session Start Tracking:**
+
+At the beginning of a work session, record the starting point:
+
+```bash
+# At session start (once per session)
+git rev-parse HEAD > .beads/session-start-commit
+```
+
+This enables accurate session-to-session tracking.
 
 ---
 

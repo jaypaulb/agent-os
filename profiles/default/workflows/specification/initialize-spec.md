@@ -159,6 +159,56 @@ if [[ "$beads_mode" == "true" ]]; then
 
     echo "✓ Beads initialized in spec folder"
     cd - > /dev/null
+
+    # Check if bv (beads viewer) is installed
+    if ! command -v bv &> /dev/null; then
+        echo ""
+        echo "⚠️  BV (beads viewer) is not installed."
+        echo "   BV provides graph intelligence for better task selection."
+        echo ""
+
+        read -p "Would you like to (i)nstall bv now or (s)kip? [i/s]: " bv_choice
+
+        case "$bv_choice" in
+            i|I|install)
+                echo ""
+                echo "Installing bv..."
+                # TODO: Replace with actual bv install command when available
+                # For now, assume: cargo install bv (or similar)
+                cargo install bv || {
+                    echo "❌ BV installation failed. Continuing with basic beads (no graph intelligence)."
+                    bv_available=false
+                }
+
+                # Verify installation
+                if command -v bv &> /dev/null; then
+                    echo "✓ BV installed successfully"
+                    bv_available=true
+                else
+                    bv_available=false
+                fi
+                ;;
+            s|S|skip)
+                echo "Skipping bv installation. Graph intelligence features disabled."
+                bv_available=false
+                ;;
+            *)
+                echo "Invalid choice. Skipping bv installation."
+                bv_available=false
+                ;;
+        esac
+    else
+        # BV already installed
+        bv_available=true
+        echo "✓ BV detected - graph intelligence enabled"
+    fi
+
+    # Update spec-config.yml with bv availability
+    if [[ "$bv_available" == "true" ]]; then
+        echo "bv_enabled: true" >> $SPEC_PATH/spec-config.yml
+    else
+        echo "bv_enabled: false" >> $SPEC_PATH/spec-config.yml
+    fi
 fi
 ```
 
@@ -178,6 +228,7 @@ cat > $SPEC_PATH/spec-config.yml <<EOF
 tracking_mode: tasks_md
 created: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 beads_initialized: false
+bv_enabled: false
 EOF
 
 echo "✓ Will use tasks.md for issue tracking (beads is disabled in config)"

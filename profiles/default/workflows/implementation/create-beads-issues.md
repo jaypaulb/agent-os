@@ -421,6 +421,46 @@ bd ready
 
 ---
 
+## Step 9.5: Validate Dependency Graph
+
+After creating all issues and dependencies, verify no circular dependencies exist:
+
+```bash
+# Source BV helpers
+source ../../../workflows/implementation/bv-helpers.md
+
+if bv_available; then
+    echo ""
+    echo "Validating dependency graph for circular dependencies..."
+
+    if ! check_cycles; then
+        echo ""
+        echo "❌ ERROR: Circular dependencies detected in issue structure!"
+        echo ""
+        get_graph_insights | jq -r '.cycles[] | "  Cycle: " + (. | join(" → "))'
+        echo ""
+        echo "This indicates a bug in the spec or issue creation logic."
+        echo "Review the dependency structure and remove circular dependencies."
+        echo ""
+        echo "Common causes:"
+        echo "  • Bidirectional dependencies between issues"
+        echo "  • Layering violations (API depends on UI which depends on API)"
+        echo "  • Incorrect dependency direction"
+        echo ""
+        echo "Fix cycles before proceeding with implementation."
+        exit 1
+    else
+        echo "✓ No cycles detected - dependency graph is valid"
+    fi
+else
+    echo ""
+    echo "BV unavailable - skipping cycle detection"
+    echo "Manually verify dependencies with: bd dep tree $EPIC_ID"
+fi
+```
+
+---
+
 ## Step 10: Output Summary
 
 Display summary for user:

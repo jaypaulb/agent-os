@@ -49,6 +49,70 @@ cd agent-os/specs/[this-spec]/
 bd list --tag organism --json | jq -r '.[] | "\(.id): \(.title)"'
 ```
 
+### NEXT: Analyze Priority Recommendations (Optional)
+
+Before assigning agents, check if any issues have priority misalignments:
+
+```bash
+cd agent-os/specs/[this-spec]/
+
+# Source BV helpers
+source ../../../workflows/implementation/bv-helpers.md
+
+if bv_available; then
+    echo "Running priority analysis..."
+    echo ""
+
+    # Get priority recommendations
+    PRIORITY_RECS=$(get_priority_recommendations)
+
+    # Display summary
+    echo "$PRIORITY_RECS" | jq -r '
+        "=== Priority Analysis ===",
+        "",
+        "Recommendations: \(.summary.recommendations)",
+        "High confidence (>0.8): \(.summary.high_confidence)",
+        "",
+        "Top Priority Misalignments:",
+        (.recommendations[:5] | .[] |
+         "  • \(.issue_id): P\(.current_priority) → P\(.suggested_priority) (\(.confidence*100 | round)% confidence)",
+         "    \(.reasoning)")
+    ' | tee priority-analysis.txt
+
+    echo ""
+    echo "Review priority-analysis.txt for recommendations."
+    echo "High-confidence suggestions indicate issues that may need priority adjustment."
+    echo ""
+
+    # Ask user if they want to apply high-confidence updates
+    read -p "Apply high-confidence priority updates (>0.8 confidence)? [y/N]: " apply_priorities
+
+    if [[ "$apply_priorities" =~ ^[Yy]$ ]]; then
+        # Extract and apply high-confidence increases
+        HIGH_CONF=$(echo "$PRIORITY_RECS" | jq -r '
+            .recommendations[] |
+            select(.confidence > 0.8 and .direction == "increase") |
+            "\(.issue_id) \(.suggested_priority)"
+        ')
+
+        if [[ -n "$HIGH_CONF" ]]; then
+            echo "Applying priority updates..."
+            while read -r issue_id new_priority; do
+                bd update "$issue_id" --priority "$new_priority" \
+                    --note "Priority updated based on graph analysis"
+                echo "✓ Updated $issue_id to P$new_priority"
+            done <<< "$HIGH_CONF"
+        else
+            echo "No high-confidence priority increases found."
+        fi
+    fi
+else
+    echo "BV unavailable - skipping priority analysis"
+fi
+```
+
+Continue with agent assignment using potentially updated priorities...
+
 Use this structure for `orchestration.yml`:
 
 ```yaml
@@ -142,6 +206,64 @@ task_groups:
   # Repeat for each task group found in tasks.md
 ```
 {{ENDIF tracking_mode_beads}}
+
+### NEXT: Choose Execution Mode (Parallel or Sequential)
+
+{{IF tracking_mode_beads}}
+Check if parallel execution is beneficial:
+
+```bash
+cd agent-os/specs/[this-spec]/
+
+# Source BV helpers
+source ../../../workflows/implementation/bv-helpers.md
+
+if bv_available; then
+    PLAN=$(get_execution_plan)
+    TRACK_COUNT=$(echo "$PLAN" | jq -r '.tracks | length')
+
+    if [[ "$TRACK_COUNT" -gt 1 ]]; then
+        echo ""
+        echo "=== Parallel Execution Opportunity ==="
+        echo "  $TRACK_COUNT independent work streams detected"
+        echo ""
+
+        # Show track summary
+        echo "$PLAN" | jq -r '
+            .tracks[] |
+            "Track \(.track_id): \(.reason)",
+            "  Items: \(.items | length)",
+            "  Top priority: \(.items[0].priority)",
+            ""
+        '
+
+        read -p "Run agents in parallel (requires multiple Claude Code instances)? [y/N]: " parallel_choice
+
+        if [[ "$parallel_choice" =~ ^[Yy]$ ]]; then
+            echo ""
+            echo "Launching parallel execution..."
+            echo "See workflows/implementation/bv-parallel-execution.md for details"
+
+            # Parallel execution workflow
+            {{workflows/implementation/bv-parallel-execution}}
+        else
+            echo ""
+            echo "Using sequential execution (one agent at a time)"
+        fi
+    else
+        echo ""
+        echo "Only one work stream detected - using sequential execution"
+    fi
+else
+    echo ""
+    echo "BV unavailable - parallel execution not available"
+    echo "Using sequential execution"
+fi
+```
+
+Continue with sequential orchestration if not using parallel execution...
+{{ENDIF tracking_mode_beads}}
+
 {{ENDIF use_claude_code_subagents}}
 
 {{UNLESS standards_as_claude_code_skills}}
