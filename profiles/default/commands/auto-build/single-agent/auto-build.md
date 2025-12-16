@@ -176,10 +176,11 @@ The autonomous harness is managed as a dependency. Check if it's installed, and 
 # Read harness config from agent-os/config.yml
 HARNESS_REPO=$(grep "autonomous_harness_repo:" ~/agent-os/config.yml | cut -d' ' -f2)
 HARNESS_BRANCH=$(grep "autonomous_harness_branch:" ~/agent-os/config.yml | cut -d' ' -f2)
-HARNESS_PATH="$HOME/.agent-os-harness"
+HARNESS_PATH="$(pwd)/.harness"
 
 echo "Harness repository: $HARNESS_REPO"
 echo "Harness branch: $HARNESS_BRANCH"
+echo "Harness path: $HARNESS_PATH"
 
 # Install or update harness
 if [ -d "$HARNESS_PATH" ]; then
@@ -196,6 +197,12 @@ else
   cd "$HARNESS_PATH"
   git checkout "$HARNESS_BRANCH"
   cd -
+
+  # Add .harness to .gitignore if not already there
+  if ! grep -q "^\.harness/$" .gitignore 2>/dev/null; then
+    echo ".harness/" >> .gitignore
+    echo "✓ Added .harness/ to .gitignore"
+  fi
 fi
 
 # Verify key files exist
@@ -208,6 +215,15 @@ fi
 
 if [ -f "$HARNESS_PATH/beads_config.py" ]; then
   echo "✓ Beads integration confirmed"
+
+  # Patch BEADS_ROOT to point to project root (parent of .harness/)
+  sed -i 's|BEADS_ROOT = Path(__file__).parent.resolve()|BEADS_ROOT = Path(__file__).parent.parent.resolve()|' "$HARNESS_PATH/beads_config.py"
+  echo "✓ Patched BEADS_ROOT to point to project root"
+
+  # Patch prompts to use relative paths instead of hardcoded paths
+  sed -i 's|/home/jaypaulb/Projects/gh/Linear-Coding-Agent-Harness/.beads_project.json|.beads_project.json|g' "$HARNESS_PATH/prompts/coding_prompt.md"
+  sed -i 's|/home/jaypaulb/Projects/gh/Linear-Coding-Agent-Harness/agent-os/product/|agent-os/product/|g' "$HARNESS_PATH/prompts/initializer_prompt.md"
+  echo "✓ Patched prompts to use relative paths"
 else
   echo "✗ beads_config.py not found. Harness may not be converted to Beads."
   exit 1
