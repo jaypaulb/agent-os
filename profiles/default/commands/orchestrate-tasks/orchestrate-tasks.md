@@ -191,6 +191,7 @@ else
     echo "BV unavailable - skipping priority analysis"
 fi
 ```
+{{ENDIF tracking_mode_beads}}
 
 ### NEXT: Create Orchestration Plan
 
