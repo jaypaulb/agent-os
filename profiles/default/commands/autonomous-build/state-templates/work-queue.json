@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Work queue for autonomous build - tracks organisms through their lifecycle",
+  "type": "object",
+  "properties": {
+    "ready": {
+      "type": "array",
+      "description": "Organisms ready to be claimed by agents",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "description": "Organism ID (e.g., bd-org-123)"},
+          "title": {"type": "string", "description": "Organism title"},
+          "type": {"type": "string", "description": "Organism type (database-layer, api-layer, ui-component)"},
+          "assignee": {"type": "string", "description": "Specialized agent type"},
+          "priority": {"type": "number", "description": "Priority score (higher = more important)"},
+          "impact": {"type": "number", "description": "BV impact score (betweenness, keystone, etc.)"},
+          "predicted_files": {
+            "type": "array",
+            "description": "Files this organism is predicted to modify",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["id", "title", "type", "assignee"]
+      }
+    },
+    "in_progress": {
+      "type": "array",
+      "description": "Organisms currently being worked on",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "type": {"type": "string"},
+          "assignee": {"type": "string"},
+          "claimed_at": {"type": "string", "format": "date-time"},
+          "slot": {"type": "integer", "minimum": 1, "maximum": 5},
+          "task_id": {"type": "string", "description": "Task tool agent ID"},
+          "attempt": {"type": "integer", "description": "Attempt number (1-3)"}
+        },
+        "required": ["id", "claimed_at", "slot", "task_id"]
+      }
+    },
+    "completed": {
+      "type": "array",
+      "description": "Organisms successfully implemented and committed",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "completed_at": {"type": "string", "format": "date-time"},
+          "slot": {"type": "integer"},
+          "commit_sha": {"type": "string", "description": "Git commit hash"}
+        },
+        "required": ["id", "completed_at"]
+      }
+    },
+    "failed": {
+      "type": "array",
+      "description": "Organisms that failed after N attempts",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "attempts": {"type": "integer", "description": "Number of attempts made"},
+          "last_error": {"type": "string", "description": "Last error message"},
+          "analysis_issue_id": {"type": "string", "description": "ID of created analysis issue"},
+          "failed_at": {"type": "string", "format": "date-time"}
+        },
+        "required": ["id", "attempts", "failed_at"]
+      }
+    },
+    "blocked": {
+      "type": "array",
+      "description": "Organisms temporarily blocked (e.g., waiting for conflict resolution)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "blocked_by": {"type": "string", "description": "Organism ID or issue ID causing block"},
+          "reason": {"type": "string", "description": "Why blocked (conflict, dependency, etc.)"},
+          "blocked_at": {"type": "string", "format": "date-time"}
+        },
+        "required": ["id", "reason", "blocked_at"]
+      }
+    }
+  },
+  "required": ["ready", "in_progress", "completed", "failed", "blocked"],
+  "example": {
+    "ready": [
+      {
+        "id": "bd-org-123",
+        "title": "User model",
+        "type": "database-layer",
+        "assignee": "database-layer-builder",
+        "priority": 10,
+        "impact": 8.5,
+        "predicted_files": ["src/organisms/models/User.js", "src/organisms/migrations/001_create_users.js"]
+      }
+    ],
+    "in_progress": [
+      {
+        "id": "bd-org-124",
+        "title": "Auth endpoints",
+        "type": "api-layer",
+        "assignee": "api-layer-builder",
+        "claimed_at": "2025-01-15T10:30:00Z",
+        "slot": 1,
+        "task_id": "a1b2c3d4",
+        "attempt": 1
+      }
+    ],
+    "completed": [],
+    "failed": [],
+    "blocked": []
+  }
+}

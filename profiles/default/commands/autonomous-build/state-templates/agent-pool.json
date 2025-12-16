@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Agent pool - tracks active agents in slots 1-5",
+  "type": "object",
+  "properties": {
+    "max_agents": {
+      "type": "integer",
+      "description": "Maximum concurrent agents",
+      "default": 5
+    },
+    "active": {
+      "type": "array",
+      "description": "Currently active agent slots",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "Slot number (1-5)"
+          },
+          "agent_type": {
+            "type": "string",
+            "description": "Specialized agent type",
+            "enum": [
+              "database-layer-builder",
+              "api-layer-builder",
+              "ui-component-builder",
+              "integration-builder",
+              "general-purpose"
+            ]
+          },
+          "organism_id": {
+            "type": "string",
+            "description": "Organism being implemented"
+          },
+          "task_id": {
+            "type": "string",
+            "description": "Task tool background task ID"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When agent was spawned"
+          },
+          "last_checked": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last time we polled agent status"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["spawning", "running", "completing"],
+            "description": "Agent lifecycle status"
+          }
+        },
+        "required": ["slot", "agent_type", "organism_id", "task_id", "started_at", "status"]
+      }
+    },
+    "available_slots": {
+      "type": "array",
+      "description": "Available slot numbers (1-5)",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5
+      }
+    },
+    "heartbeat_interval": {
+      "type": "integer",
+      "description": "Seconds between status checks",
+      "default": 10
+    }
+  },
+  "required": ["max_agents", "active", "available_slots"],
+  "example": {
+    "max_agents": 5,
+    "active": [
+      {
+        "slot": 1,
+        "agent_type": "database-layer-builder",
+        "organism_id": "bd-org-123",
+        "task_id": "a1b2c3d4",
+        "started_at": "2025-01-15T10:30:00Z",
+        "last_checked": "2025-01-15T10:35:00Z",
+        "status": "running"
+      },
+      {
+        "slot": 2,
+        "agent_type": "api-layer-builder",
+        "organism_id": "bd-org-124",
+        "task_id": "e5f6g7h8",
+        "started_at": "2025-01-15T10:31:00Z",
+        "last_checked": "2025-01-15T10:35:00Z",
+        "status": "running"
+      }
+    ],
+    "available_slots": [3, 4, 5],
+    "heartbeat_interval": 10
+  }
+}

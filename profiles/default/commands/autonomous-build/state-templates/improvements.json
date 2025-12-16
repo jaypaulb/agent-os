@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Learning system - accumulated knowledge from errors and successes",
+  "type": "object",
+  "properties": {
+    "common_errors": {
+      "type": "array",
+      "description": "Patterns of errors seen across organisms",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Error pattern description"
+          },
+          "fix": {
+            "type": "string",
+            "description": "How to avoid this error"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["imports", "types", "tests", "conflicts", "dependencies", "validation", "other"],
+            "description": "Error category"
+          },
+          "seen_count": {
+            "type": "integer",
+            "description": "Number of times this error occurred"
+          },
+          "first_seen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "trending": {
+            "type": "string",
+            "enum": ["up", "down", "stable"],
+            "description": "Whether this error is becoming more or less common"
+          }
+        },
+        "required": ["pattern", "fix", "category", "seen_count"]
+      }
+    },
+    "best_practices": {
+      "type": "array",
+      "description": "Successful patterns discovered during implementation",
+      "items": {
+        "type": "string"
+      }
+    },
+    "conflict_patterns": {
+      "type": "array",
+      "description": "Common merge conflict scenarios and resolutions",
+      "items": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Files that commonly conflict"
+          },
+          "cause": {
+            "type": "string",
+            "description": "Why these files conflict"
+          },
+          "resolution": {
+            "type": "string",
+            "description": "How to resolve"
+          },
+          "seen_count": {
+            "type": "integer"
+          }
+        },
+        "required": ["files", "cause", "resolution"]
+      }
+    },
+    "organism_specific": {
+      "type": "object",
+      "description": "Organism type-specific learnings",
+      "properties": {
+        "database-layer": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "api-layer": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "ui-component": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Learning effectiveness metrics",
+      "properties": {
+        "total_iterations": {"type": "integer"},
+        "total_organisms": {"type": "integer"},
+        "success_rate_trend": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "iteration": {"type": "integer"},
+              "success_rate": {"type": "number", "minimum": 0, "maximum": 1},
+              "errors": {"type": "integer"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": ["common_errors", "best_practices", "metrics"],
+  "example": {
+    "common_errors": [
+      {
+        "pattern": "Missing import statement",
+        "fix": "Always verify imports before implementing",
+        "category": "imports",
+        "seen_count": 8,
+        "first_seen": "2025-01-15T10:00:00Z",
+        "last_seen": "2025-01-15T14:30:00Z",
+        "trending": "down"
+      },
+      {
+        "pattern": "Type mismatch in interface",
+        "fix": "Check interface definitions before using types",
+        "category": "types",
+        "seen_count": 5,
+        "first_seen": "2025-01-15T11:00:00Z",
+        "last_seen": "2025-01-15T15:00:00Z",
+        "trending": "down"
+      }
+    ],
+    "best_practices": [
+      "Read similar organism implementations before starting",
+      "Run tests after each significant change",
+      "Check for existing type definitions before creating new ones"
+    ],
+    "conflict_patterns": [
+      {
+        "files": ["src/templates/interfaces/index.ts"],
+        "cause": "Multiple organisms adding exports to barrel file",
+        "resolution": "Add exports in alphabetical order to reduce conflicts",
+        "seen_count": 3
+      }
+    ],
+    "organism_specific": {
+      "database-layer": [
+        "Always check for existing migrations before creating new ones",
+        "Use consistent naming: {timestamp}_{action}_{table}.js"
+      ],
+      "api-layer": [
+        "Check route conflicts in routes/index.js before adding endpoints"
+      ],
+      "ui-component": [
+        "Verify component doesn't already exist in components/ directory"
+      ]
+    },
+    "metrics": {
+      "total_iterations": 10,
+      "total_organisms": 35,
+      "success_rate_trend": [
+        {"iteration": 1, "success_rate": 0.60, "errors": 14},
+        {"iteration": 5, "success_rate": 0.75, "errors": 8},
+        {"iteration": 10, "success_rate": 0.91, "errors": 3}
+      ]
+    }
+  }
+}
