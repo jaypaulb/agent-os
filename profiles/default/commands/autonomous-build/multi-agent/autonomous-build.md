@@ -743,8 +743,38 @@ else
 
     echo "Failure reason: $FAILURE_REASON"
 
-    # TODO Phase 5: Extract detailed error patterns and add to improvements.json
-    # For now, just note the failure reason
+    # Extract error patterns for learning system
+    echo "Analyzing errors for learning system..."
+
+    # Get error output from validation logs
+    ERROR_OUTPUT=""
+    if [ -f "/tmp/test-output.txt" ]; then
+      ERROR_OUTPUT="${ERROR_OUTPUT}\n=== Test Output ===\n$(cat /tmp/test-output.txt)\n"
+    fi
+    if [ -f "/tmp/lint-output.txt" ]; then
+      ERROR_OUTPUT="${ERROR_OUTPUT}\n=== Lint Output ===\n$(cat /tmp/lint-output.txt)\n"
+    fi
+    if [ -f "/tmp/type-output.txt" ]; then
+      ERROR_OUTPUT="${ERROR_OUTPUT}\n=== Type Output ===\n$(cat /tmp/type-output.txt)\n"
+    fi
+    if [ -f "/tmp/integration-output.txt" ]; then
+      ERROR_OUTPUT="${ERROR_OUTPUT}\n=== Integration Output ===\n$(cat /tmp/integration-output.txt)\n"
+    fi
+    if [ -f "/tmp/regression-output.txt" ]; then
+      ERROR_OUTPUT="${ERROR_OUTPUT}\n=== Regression Output ===\n$(cat /tmp/regression-output.txt)\n"
+    fi
+
+    # Export variables for error analyzer
+    export ORGANISM_ID
+    export VALIDATION_EXIT_CODE=${VALIDATION_EXIT_CODE:-0}
+    export ERROR_OUTPUT
+    export ATTEMPT
+
+    # Run error analyzer (if validation failed with error output)
+    if [ "$VALIDATION_PASSED" = false ] && [ -n "$ERROR_OUTPUT" ]; then
+      bash profiles/default/workflows/implementation/learning/error-analyzer.md 2>/dev/null || echo "⚠️  Error analyzer failed"
+      echo "✓ Errors extracted and added to learning system"
+    fi
 
     # Increment attempt count and move to ready
     ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
