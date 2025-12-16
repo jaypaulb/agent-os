@@ -49,7 +49,7 @@ fi
 echo "✓ Beads initialized at project root"
 
 # Check for issues
-ISSUE_COUNT=$(bd list --format json 2>/dev/null | jq '. | length' || echo "0")
+ISSUE_COUNT=$(bd list --json 2>/dev/null | jq '. | length' || echo "0")
 echo "Found $ISSUE_COUNT Beads issues"
 
 if [ "$ISSUE_COUNT" -eq 0 ]; then
@@ -71,7 +71,7 @@ fi
 # Ask user which spec/phase to build (optional filtering)
 echo ""
 echo "Available phases:"
-bd list --type epic --format json | jq -r '.[] | "  • \(.title) (\(.id))"'
+bd list --type epic --json | jq -r '.[] | "  • \(.title) (\(.id))"'
 
 echo ""
 echo "Show ready work:"
@@ -397,7 +397,7 @@ if [ ! -f ".beads_project.json" ]; then
   echo "Creating .beads_project.json marker..."
 
   # Get project metadata from Beads (use first epic, or get from product metadata)
-  EPIC_COUNT=$(bd list --type epic --format json | jq '. | length')
+  EPIC_COUNT=$(bd list --type epic --json | jq '. | length')
 
   if [ "$EPIC_COUNT" -gt 1 ]; then
     # Multi-phase project
@@ -405,8 +405,8 @@ if [ ! -f ".beads_project.json" ]; then
     EPIC_ID="multi-phase"
   else
     # Single-phase project
-    EPIC_ID=$(bd list --type epic --format json | jq -r '.[0].id')
-    PROJECT_NAME=$(bd show "$EPIC_ID" --format json | jq -r '.title')
+    EPIC_ID=$(bd list --type epic --json | jq -r '.[0].id')
+    PROJECT_NAME=$(bd show "$EPIC_ID" --json | jq -r '.title')
   fi
 
   cat > .beads_project.json <<EOF

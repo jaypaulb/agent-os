@@ -29,7 +29,7 @@ Given an issue ID, determine what feature to test:
 # Get issue details
 ISSUE_ID="$1"  # Passed as parameter
 
-ISSUE_DATA=$(bd show "$ISSUE_ID" --format json)
+ISSUE_DATA=$(bd show "$ISSUE_ID" --json)
 TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
 DESCRIPTION=$(echo "$ISSUE_DATA" | jq -r '.description')
 TAGS=$(echo "$ISSUE_DATA" | jq -r '.tags[]')

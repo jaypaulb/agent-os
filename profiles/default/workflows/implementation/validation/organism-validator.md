@@ -65,7 +65,7 @@ echo "=== Gate 1: Run Tests ==="
 echo ""
 
 # Get organism type to determine test strategy
-ORGANISM_TYPE=$(bd show "$ORGANISM_ID" --format json 2>/dev/null | jq -r '.type')
+ORGANISM_TYPE=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.type')
 
 case "$ORGANISM_TYPE" in
   "database-layer")
@@ -73,7 +73,7 @@ case "$ORGANISM_TYPE" in
     echo "Running database layer tests..."
 
     # Find test files for this organism
-    ORGANISM_TITLE=$(bd show "$ORGANISM_ID" --format json 2>/dev/null | jq -r '.title' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+    ORGANISM_TITLE=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.title' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
 
     # Look for test files matching organism name
     TEST_FILES=$(find . -name "*${ORGANISM_TITLE}*.test.*" -o -name "*${ORGANISM_TITLE}*.spec.*" 2>/dev/null || echo "")
@@ -108,7 +108,7 @@ case "$ORGANISM_TYPE" in
     echo "Running API layer tests..."
 
     # Find API test files
-    ORGANISM_TITLE=$(bd show "$ORGANISM_ID" --format json 2>/dev/null | jq -r '.title' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+    ORGANISM_TITLE=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.title' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
     TEST_FILES=$(find . -name "*${ORGANISM_TITLE}*.test.*" -o -name "*${ORGANISM_TITLE}*.spec.*" 2>/dev/null || echo "")
 
     if [ -n "$TEST_FILES" ]; then
@@ -136,7 +136,7 @@ case "$ORGANISM_TYPE" in
     # UI component: Run component tests
     echo "Running UI component tests..."
 
-    ORGANISM_TITLE=$(bd show "$ORGANISM_ID" --format json 2>/dev/null | jq -r '.title' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
+    ORGANISM_TITLE=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.title' | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
     TEST_FILES=$(find . -name "*${ORGANISM_TITLE}*.test.*" -o -name "*${ORGANISM_TITLE}*.spec.*" 2>/dev/null || echo "")
 
     if [ -n "$TEST_FILES" ]; then
@@ -194,14 +194,14 @@ echo "=== Gate 2: Integration Test ==="
 echo ""
 
 # Get organism dependencies from Beads
-DEPENDENCIES=$(bd show "$ORGANISM_ID" --format json 2>/dev/null | jq -r '.dependencies[]? // empty')
+DEPENDENCIES=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.dependencies[]? // empty')
 
 if [ -n "$DEPENDENCIES" ]; then
   echo "Checking integration with dependencies:"
 
   for DEP_ID in $DEPENDENCIES; do
-    DEP_TITLE=$(bd show "$DEP_ID" --format json 2>/dev/null | jq -r '.title')
-    DEP_STATUS=$(bd show "$DEP_ID" --format json 2>/dev/null | jq -r '.status')
+    DEP_TITLE=$(bd show "$DEP_ID" --json 2>/dev/null | jq -r '.title')
+    DEP_STATUS=$(bd show "$DEP_ID" --json 2>/dev/null | jq -r '.status')
 
     echo "  • $DEP_ID ($DEP_TITLE): $DEP_STATUS"
 
@@ -281,7 +281,7 @@ COMPLETED_ORGANISMS=$(jq -r '.completed[].id' .beads/autonomous-state/work-queue
 if [ -n "$COMPLETED_ORGANISMS" ]; then
   # Pick random organism
   SAMPLE_ORGANISM=$(echo "$COMPLETED_ORGANISMS" | shuf -n 1)
-  SAMPLE_TITLE=$(bd show "$SAMPLE_ORGANISM" --format json 2>/dev/null | jq -r '.title')
+  SAMPLE_TITLE=$(bd show "$SAMPLE_ORGANISM" --json 2>/dev/null | jq -r '.title')
 
   echo "Testing random completed organism: $SAMPLE_ORGANISM ($SAMPLE_TITLE)"
 

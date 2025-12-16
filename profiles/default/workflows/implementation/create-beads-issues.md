@@ -483,7 +483,7 @@ if [ "$PHASE_NUM" -gt 1 ]; then
     echo "✓ Phase $PHASE_NUM epic ($EPIC_ID) blocks on Phase $PREV_PHASE integration ($PREV_INTEGRATION)"
 
     # Verify dependency was created
-    if bd show "$EPIC_ID" --format json | jq -e '.blocks | contains(["'"$PREV_INTEGRATION"'"])' > /dev/null; then
+    if bd show "$EPIC_ID" --json | jq -e '.blocks | contains(["'"$PREV_INTEGRATION"'"])' > /dev/null; then
       echo "✓ Dependency verified in graph"
     else
       echo "❌ ERROR: Dependency creation failed"
@@ -619,7 +619,7 @@ echo ""
 echo "Phase $PHASE_NUM issues:"
 if bv_available; then
     # Use BV recipe system for better organization
-    PHASE_ISSUES=$(bv --filter "label:phase-$PHASE_NUM" --format json 2>/dev/null || bd list --label "phase-$PHASE_NUM" --format json)
+    PHASE_ISSUES=$(bv --filter "label:phase-$PHASE_NUM" --format json 2>/dev/null || bd list --label "phase-$PHASE_NUM" --json)
     echo "$PHASE_ISSUES" | jq -r '.[] | "  [\(.type | ascii_upcase)] \(.title) (P\(.priority // "?"))"'
 else
     bd list --label "phase-$PHASE_NUM" --format=table
@@ -629,7 +629,7 @@ echo ""
 # Show ready work using BV execution plan or bd ready
 echo "Ready to start (Phase $PHASE_NUM unblocked work):"
 if bv_available; then
-    READY=$(bv --filter "label:phase-$PHASE_NUM,status:pending" --unblocked --format json 2>/dev/null || bd ready --label "phase-$PHASE_NUM" --format json)
+    READY=$(bv --filter "label:phase-$PHASE_NUM,status:pending" --unblocked --format json 2>/dev/null || bd ready --label "phase-$PHASE_NUM" --json)
     READY_COUNT=$(echo "$READY" | jq '. | length')
     if [ "$READY_COUNT" -gt 0 ]; then
         echo "$READY" | jq -r '.[] | "  • \(.id): \(.title)"'

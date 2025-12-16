@@ -427,10 +427,10 @@ for phase_num in $(seq 2 $PHASE_COUNT); do
     prev_phase=$((phase_num - 1))
 
     # Find this phase's epic
-    CURR_EPIC=$(bd list --label "phase-$phase_num" --type epic --format json | jq -r '.[0].id')
+    CURR_EPIC=$(bd list --label "phase-$phase_num" --type epic --json | jq -r '.[0].id')
 
     # Find previous phase's integration issue
-    PREV_INTEGRATION=$(bd list --label "phase-$prev_phase" --format json | \
+    PREV_INTEGRATION=$(bd list --label "phase-$prev_phase" --json | \
         jq -r '.[] | select(.title | contains("[Integration]")) | .id')
 
     # Set dependency

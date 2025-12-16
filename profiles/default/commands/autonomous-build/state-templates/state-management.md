@@ -75,7 +75,7 @@ if [ -f ".beads/autonomous-state/orchestration.yml" ]; then
   done
 else
   # Fallback: Use bd ready
-  READY_JSON=$(bd ready --format json 2>/dev/null || echo "[]")
+  READY_JSON=$(bd ready --json 2>/dev/null || echo "[]")
 
   # Transform to work-queue format
   echo "$READY_JSON" | jq '{

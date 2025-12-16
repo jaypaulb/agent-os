@@ -2,6 +2,18 @@
 
 You are the autonomous build orchestrator running as a **dev team manager**. Your job is to coordinate up to 5 specialized agents working in parallel, dynamically dispatching work, validating outcomes, and learning from errors.
 
+## Prerequisites & Dependencies
+
+This command composes with existing orchestration infrastructure:
+
+```bash
+# Source shared BV helpers for consistent tooling
+source agent-os/profiles/default/workflows/implementation/bv-helpers.md
+```
+
+**Key dependency**: Uses `/orchestrate-tasks --headless` for agent assignment.
+Do NOT reimplement agent inference - defer to orchestrate-tasks.
+
 ## Your Responsibilities
 
 1. **Manage work queue** - Track organisms from ready → in_progress → completed
@@ -21,7 +33,10 @@ You are the autonomous build orchestrator running as a **dev team manager**. You
 
 ## INITIALIZATION
 
-First, verify the project is ready and initialize/recover state:
+First, verify the project is ready and initialize/recover state.
+
+**IMPORTANT**: This command leverages `/orchestrate-tasks --headless` for proper agent assignment.
+Do NOT duplicate agent inference logic here - orchestrate-tasks handles that.
 
 ```bash
 echo "=== Autonomous Build v2 Initialization ==="
@@ -32,9 +47,11 @@ if [ ! -d ".beads" ]; then
   echo "❌ No .beads/ directory found at project root"
   exit 1
 fi
+echo "✓ .beads directory found"
 
 # Check for issues
-ISSUE_COUNT=$(bd list --format json 2>/dev/null | jq '. | length' || echo "0")
+ISSUE_COUNT=$(bd list --json 2>/dev/null | jq '. | length' || echo "0")
+echo "Found $ISSUE_COUNT total issues in Beads"
 if [ "$ISSUE_COUNT" -eq 0 ]; then
   echo "❌ No Beads issues found"
   echo "Run /autonomous-plan or /create-tasks first"
@@ -64,24 +81,37 @@ if [ -f ".beads/autonomous-state/work-queue.json" ]; then
   echo "✓ State recovered"
 else
   # Initialize state from scratch
-  echo "🆕 First run - initializing state"
+  echo "🆕 First run - initializing state via /orchestrate-tasks --headless"
   echo ""
 
   # Create state directory structure
   mkdir -p .beads/autonomous-state/locks
   mkdir -p .beads/autonomous-state/learning
   mkdir -p .beads/autonomous-state/failures
+```
 
-  # Initialize work-queue.json
-  cat > .beads/autonomous-state/work-queue.json <<'EOF'
-{
-  "ready": [],
-  "in_progress": [],
-  "completed": [],
-  "failed": [],
-  "blocked": []
-}
-EOF
+**NOW CALL /orchestrate-tasks --headless** to create orchestration state with proper agent assignments.
+
+This command will:
+1. Discover all phases and organisms from Beads
+2. Infer the correct specialized agent for each organism based on title/type:
+   - Database/Model/Schema/Migration → `database-layer-builder`
+   - API/Endpoint/Controller/Route → `api-layer-builder`
+   - UI/Component/Page/View/Frontend → `ui-component-builder`
+   - Integration/Wire/E2E → `integration-assembler`
+   - Test Gap/Coverage → `test-gap-analyzer`
+   - Default → `molecule-composer`
+3. Write orchestration.yml to `.beads/autonomous-state/orchestration.yml`
+
+After orchestrate-tasks completes, continue initialization:
+
+```bash
+  # Verify orchestration.yml was created
+  if [ ! -f ".beads/autonomous-state/orchestration.yml" ]; then
+    echo "❌ orchestrate-tasks did not create orchestration.yml"
+    exit 1
+  fi
+  echo "✓ Orchestration state created with agent assignments"
 
   # Initialize agent-pool.json
   MAX_AGENTS=$(yq eval '.session.max_agents // 5' .beads/autonomous-config.yml 2>/dev/null || echo "5")
@@ -94,7 +124,7 @@ EOF
 }
 EOF
 
-  # Initialize improvements.json
+  # Initialize improvements.json (learning system)
   cat > .beads/autonomous-state/learning/improvements.json <<'EOF'
 {
   "common_errors": [],
@@ -113,26 +143,25 @@ EOF
 }
 EOF
 
-  echo "✓ State initialized"
+  echo "✓ Agent pool and learning system initialized"
 
-  # Load ready work into queue
+  # Load work queue FROM orchestration.yml (with proper agent assignments)
   echo ""
-  echo "Loading ready organisms into work queue..."
+  echo "Loading organisms from orchestration.yml into work queue..."
 
-  # Get ready organisms from Beads
-  READY_JSON=$(bd ready --format json 2>/dev/null || echo "[]")
-
-  # Transform to work-queue format and populate ready array
-  echo "$READY_JSON" | jq '[.[] | {
-    id: .id,
-    title: .title,
-    type: .type,
-    assignee: "general-purpose",
-    priority: 5,
-    impact: 0,
-    predicted_files: []
-  }]' | jq '. as $ready | {
-    ready: $ready,
+  # Transform orchestration.yml to work-queue.json format
+  # This preserves the agent assignments from orchestrate-tasks
+  yq eval '.beads' .beads/autonomous-state/orchestration.yml -o json | jq '{
+    ready: [.[] | {
+      id: .id,
+      title: .title,
+      type: (.type // "organism"),
+      assignee: .assignee,
+      standards: (.standards // []),
+      priority: (.priority // 5),
+      impact: (.impact // 0),
+      predicted_files: (.predicted_files // [])
+    }],
     in_progress: [],
     completed: [],
     failed: [],
@@ -140,7 +169,12 @@ EOF
   }' > .beads/autonomous-state/work-queue.json
 
   READY_COUNT=$(jq '.ready | length' .beads/autonomous-state/work-queue.json)
-  echo "✓ Loaded $READY_COUNT organisms"
+  echo "✓ Loaded $READY_COUNT organisms with specialized agent assignments"
+
+  # Show agent distribution
+  echo ""
+  echo "Agent distribution:"
+  jq -r '.ready | group_by(.assignee) | .[] | "  \(.[0].assignee): \(length) organisms"' .beads/autonomous-state/work-queue.json
 fi
 
 # Show current state
@@ -313,11 +347,64 @@ $CONFLICT_DETAILS
 "
   fi
 
+  # Check for context exhaustion recovery mode
+  RECOVERY_CONTEXT=""
+  RECOVERY_MODE=$(echo "$ORGANISM_DATA" | jq -r '.recovery_mode // false')
+
+  if [ "$RECOVERY_MODE" = "true" ]; then
+    CONTINUE_FROM=$(echo "$ORGANISM_DATA" | jq -r '.continue_from_step // 0')
+    PRIOR_STEPS=$(echo "$ORGANISM_DATA" | jq -r '.prior_steps | join(", ") // "unknown"')
+    PRIOR_COMMITS=$(echo "$ORGANISM_DATA" | jq -r '.prior_commits | join(", ") // "none"')
+
+    RECOVERY_CONTEXT="
+🔄 RECOVERY MODE: Continuing from previous agent
+
+A previous agent ran out of context while implementing this organism.
+You are continuing their work. DO NOT start from scratch.
+
+**Progress from previous agent:**
+- Steps completed: $PRIOR_STEPS
+- Continue from step: $CONTINUE_FROM
+- Prior commits: $PRIOR_COMMITS
+
+**Your task:**
+1. First, verify the prior commits exist: \`git log --oneline -5\`
+2. Check what was already implemented by reading the modified files
+3. Continue from step $CONTINUE_FROM (do NOT redo completed steps)
+4. Complete the remaining steps
+5. Close the organism when done
+
+**IMPORTANT:** The prior work is committed. Build on it, don't replace it.
+"
+  fi
+
   echo "🚀 Spawning agent in slot $SLOT: $ORGANISM_ID ($ORGANISM_TITLE)"
 
   if [ "$CONFLICT_ATTEMPT" -gt 0 ]; then
     echo "   ⚠️  Conflict resolution mode (attempt $CONFLICT_ATTEMPT)"
   fi
+
+  if [ "$RECOVERY_MODE" = "true" ]; then
+    echo "   🔄 Recovery mode (continue from step $CONTINUE_FROM)"
+  fi
+
+  # Checkpoint file for this organism (external progress tracking)
+  CHECKPOINT_FILE=".beads/autonomous-state/checkpoints/${ORGANISM_ID}.json"
+  mkdir -p .beads/autonomous-state/checkpoints
+
+  # Initialize checkpoint
+  cat > "$CHECKPOINT_FILE" <<CKPT
+{
+  "organism_id": "$ORGANISM_ID",
+  "slot": $SLOT,
+  "started_at": "$(date -Iseconds)",
+  "current_step": 0,
+  "steps_completed": [],
+  "files_modified": [],
+  "commits": [],
+  "status": "starting"
+}
+CKPT
 
   # Spawn agent via Task tool (background=true)
   TASK_PROMPT="You are the implementer agent working on organism $ORGANISM_ID.
@@ -326,47 +413,76 @@ $LEARNING_CONTEXT
 
 $CONFLICT_CONTEXT
 
+$RECOVERY_CONTEXT
+
 Your task: Implement this organism, test it, and close it.
+
+## CRITICAL: Checkpoint Protocol
+
+You MUST write progress to checkpoint file after EACH step. This allows recovery if you run out of context.
+
+**Checkpoint file**: $CHECKPOINT_FILE
+
+**After completing each step, run:**
+\`\`\`bash
+jq '.current_step = N | .steps_completed += [\"step_name\"] | .status = \"in_progress\"' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
+\`\`\`
+
+**After modifying files:**
+\`\`\`bash
+jq '.files_modified += [\"path/to/file.go\"]' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
+\`\`\`
+
+**After each commit:**
+\`\`\`bash
+COMMIT_SHA=\$(git rev-parse HEAD)
+jq \".commits += [\\\"\$COMMIT_SHA\\\"]\" $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
+\`\`\`
 
 ## Process:
 
-1. **Read organism details**:
+1. **Read organism details** (checkpoint: step 1):
    \`\`\`bash
    bd show $ORGANISM_ID
+   jq '.current_step = 1 | .steps_completed += [\"read_details\"] | .status = \"in_progress\"' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
    \`\`\`
 
-2. **Claim the organism**:
+2. **Claim the organism** (checkpoint: step 2):
    \`\`\`bash
    bd update $ORGANISM_ID --status in_progress
+   jq '.current_step = 2 | .steps_completed += [\"claimed\"]' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
    \`\`\`
 
-3. **Implement following atomic design principles**:
+3. **Implement** (checkpoint: step 3):
    - Read spec context (if spec label exists)
    - Implement the feature
-   - Write tests
+   - **COMMIT after implementation** (before tests)
+   - Update checkpoint with files_modified and commit SHA
+
+4. **Write tests** (checkpoint: step 4):
+   - Write tests for the implementation
+   - **COMMIT after writing tests**
+   - Update checkpoint
+
+5. **Run tests** (checkpoint: step 5):
    - Run tests and verify they pass
+   - Update checkpoint with test results
 
-4. **Follow the implement-tasks workflow**:
-   {{@agent-os/workflows/implementation/implement-tasks.md}}
-
-   **IMPORTANT**: Monitor your context! If approaching limits:
-   - Commit partial work
-   - Update organism with progress note
-   - Return control to orchestrator
-
-5. **Close organism when complete**:
+6. **Close organism** (checkpoint: step 6 - FINAL):
    \`\`\`bash
    bd update $ORGANISM_ID --status closed
    bd comment $ORGANISM_ID \"Implementation complete. Tests passing.\"
+   jq '.current_step = 6 | .steps_completed += [\"closed\"] | .status = \"completed\"' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
    \`\`\`
-
-6. **Commit and push** using the git push fallback in implement-tasks.md
 
 7. **Return control**: You're done. Orchestrator will continue.
 
+**IMPORTANT**: Commit early, commit often. Each commit is recoverable if you run out of context.
+
 Project root: $(pwd)
 Organism: $ORGANISM_ID
-Slot: $SLOT"
+Slot: $SLOT
+Checkpoint: $CHECKPOINT_FILE"
 
   # Spawn via Task tool (this is where you call the Task tool with run_in_background=true)
   # The orchestrator (Claude) will make this tool call
@@ -470,9 +586,9 @@ done
 
 **IMPORTANT**: You (Claude) will call the TaskOutput tool with `block=false` to poll agent status without waiting.
 
-### STEP 3: Handle Agent Completions
+### STEP 3: Handle Agent Completions (with Context Recovery)
 
-For each completed agent from STEP 2, validate and commit (or retry):
+For each completed agent from STEP 2, check for context exhaustion and recover:
 
 ```bash
 # For completed agent with TASK_ID, ORGANISM_ID, SLOT:
@@ -486,10 +602,76 @@ echo "  task_id: \"$TASK_ID\""
 echo "  block: true  # Get full output"
 echo ""
 
-# NOTE: After getting output, validate through 5-gate pipeline
+# NOTE: TaskOutput may return error if agent died from context exhaustion
+# In that case, we recover using the checkpoint file
+
+# ═══════════════════════════════════════════════════════════════════
+# CHECKPOINT RECOVERY: Check if agent died mid-task
+# ═══════════════════════════════════════════════════════════════════
+
+CHECKPOINT_FILE=".beads/autonomous-state/checkpoints/${ORGANISM_ID}.json"
+
+if [ -f "$CHECKPOINT_FILE" ]; then
+  CHECKPOINT_STATUS=$(jq -r '.status' "$CHECKPOINT_FILE")
+  CHECKPOINT_STEP=$(jq -r '.current_step' "$CHECKPOINT_FILE")
+  CHECKPOINT_COMMITS=$(jq -r '.commits | length' "$CHECKPOINT_FILE")
+
+  echo "📋 Checkpoint found: step $CHECKPOINT_STEP, status: $CHECKPOINT_STATUS, commits: $CHECKPOINT_COMMITS"
+
+  if [ "$CHECKPOINT_STATUS" != "completed" ]; then
+    # Agent died before completing - check what was saved
+    echo "⚠️  Agent died before completing (likely context exhaustion)"
+
+    if [ "$CHECKPOINT_COMMITS" -gt 0 ]; then
+      # Partial work was committed - can recover
+      echo "✓ Found $CHECKPOINT_COMMITS commits - partial work recoverable"
+
+      LAST_COMMIT=$(jq -r '.commits[-1]' "$CHECKPOINT_FILE")
+      STEPS_DONE=$(jq -r '.steps_completed | join(", ")' "$CHECKPOINT_FILE")
+
+      echo "  Last commit: $LAST_COMMIT"
+      echo "  Steps completed: $STEPS_DONE"
+
+      # Add recovery context for retry
+      ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
+      RECOVERY_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
+        recovery_mode: true,
+        continue_from_step: $CHECKPOINT_STEP,
+        prior_commits: $(jq '.commits' "$CHECKPOINT_FILE"),
+        prior_steps: $(jq '.steps_completed' "$CHECKPOINT_FILE"),
+        context_death_at: \"$(date -Iseconds)\"
+      } | del(.claimed_at, .slot, .task_id)")
+
+      # Re-queue with recovery context
+      jq "
+        .ready = [$RECOVERY_DATA] + .ready |
+        .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
+      " .beads/autonomous-state/work-queue.json > /tmp/wq.json
+      mv /tmp/wq.json .beads/autonomous-state/work-queue.json
+
+      echo "✓ Re-queued $ORGANISM_ID for recovery (continue from step $CHECKPOINT_STEP)"
+
+      # Free slot and continue
+      # (slot freeing code follows in the next section)
+      CONTEXT_DEATH_RECOVERY=true
+    else
+      # No commits - nothing to recover, will retry from scratch
+      echo "❌ No commits found - retry from scratch"
+      CONTEXT_DEATH_RECOVERY=false
+    fi
+  fi
+else
+  echo "⚠️  No checkpoint file found for $ORGANISM_ID"
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# Normal completion handling (if not recovering from context death)
+# ═══════════════════════════════════════════════════════════════════
+
+if [ "${CONTEXT_DEATH_RECOVERY:-false}" != "true" ]; then
 
 # Check if organism was closed by agent
-ORGANISM_STATUS=$(bd show "$ORGANISM_ID" --format json 2>/dev/null | jq -r '.status')
+ORGANISM_STATUS=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.status')
 
 if [ "$ORGANISM_STATUS" != "closed" ]; then
   # Agent didn't close organism - treat as failure
@@ -878,6 +1060,27 @@ EOF
   echo "✓ Slot $SLOT freed"
   echo ""
 fi
+
+fi  # End of CONTEXT_DEATH_RECOVERY check
+
+# If we recovered from context death, also free the slot
+if [ "${CONTEXT_DEATH_RECOVERY:-false}" = "true" ]; then
+  # Remove lock
+  rm -f ".beads/autonomous-state/locks/${ORGANISM_ID}.lock"
+
+  # Free agent slot
+  jq "
+    .active = [.active[] | select(.slot != $SLOT)] |
+    .available_slots += [$SLOT] |
+    .available_slots |= sort
+  " .beads/autonomous-state/agent-pool.json > /tmp/ap.json
+  mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
+
+  # Clean up checkpoint file (will be recreated on retry)
+  rm -f "$CHECKPOINT_FILE"
+
+  echo "✓ Slot $SLOT freed (context recovery)"
+fi
 ```
 
 ### STEP 4: Check Completion
@@ -1043,7 +1246,7 @@ You (Claude orchestrator) will make these tool calls during the loop:
 ```python
 # STEP 1: Spawn agents
 Task(
-    subagent_type="general-purpose",  # or specialized agent
+    subagent_type=AGENT_TYPE,  # From work-queue assignee (set by orchestrate-tasks)
     description="Implement bd-org-123 (slot 1)",
     prompt="[full implementation prompt with learnings]",
     run_in_background=True  # CRITICAL: Non-blocking
@@ -1095,33 +1298,48 @@ session:
 
 ```
 === Autonomous Build v2 Initialization ===
-✓ State initialized
-✓ Loaded 15 organisms
+✓ .beads directory found
+Found 252 total issues in Beads
+
+🆕 First run - initializing state via /orchestrate-tasks --headless
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  HEADLESS MODE: Autonomous Build Integration
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Orchestration state created with agent assignments
+
+Agent distribution:
+  database-layer-builder: 8 organisms
+  api-layer-builder: 12 organisms
+  ui-component-builder: 15 organisms
+  molecule-composer: 20 organisms
+  integration-assembler: 5 organisms
+
+✓ Loaded 60 organisms with specialized agent assignments
 
 === Current State ===
-  Ready: 15 organisms
+  Ready: 60 organisms
   Completed: 0 organisms
   Failed: 0 organisms
   Agent slots: 5 concurrent
 
 Starting parallel agent pool (max 5 concurrent)...
 
-🚀 Spawning agent in slot 1: bd-org-001 (User model)
-🚀 Spawning agent in slot 2: bd-org-002 (Auth endpoints)
-🚀 Spawning agent in slot 3: bd-org-003 (Login component)
-🚀 Spawning agent in slot 4: bd-org-004 (Validation utils)
-🚀 Spawning agent in slot 5: bd-org-005 (Error handling)
+🚀 Spawning agent in slot 1: bd-org-001 (User model) → database-layer-builder
+🚀 Spawning agent in slot 2: bd-org-002 (Auth endpoints) → api-layer-builder
+🚀 Spawning agent in slot 3: bd-org-003 (Login component) → ui-component-builder
+🚀 Spawning agent in slot 4: bd-org-004 (Validation utils) → molecule-composer
+🚀 Spawning agent in slot 5: bd-org-005 (Error handling) → molecule-composer
 
 === Progress Dashboard ===
 Work Queue:
-  Ready: 10 | In Progress: 5 | Completed: 0 | Failed: 0
+  Ready: 55 | In Progress: 5 | Completed: 0 | Failed: 0
 
 Agent Pool:
   Slot 1: bd-org-001 (database-layer-builder) - running
   Slot 2: bd-org-002 (api-layer-builder) - running
   Slot 3: bd-org-003 (ui-component-builder) - running
-  Slot 4: bd-org-004 (general-purpose) - running
-  Slot 5: bd-org-005 (general-purpose) - running
+  Slot 4: bd-org-004 (molecule-composer) - running
+  Slot 5: bd-org-005 (molecule-composer) - running
 
 [10 seconds later...]
 
@@ -1129,7 +1347,7 @@ Agent Pool:
 🎉 Organism bd-org-004 completed successfully
 ✓ Slot 4 freed
 
-🚀 Spawning agent in slot 4: bd-org-006 (Password hashing)
+🚀 Spawning agent in slot 4: bd-org-006 (Password hashing) → molecule-composer
 
 [continues until all organisms complete...]
 

@@ -60,10 +60,10 @@ source agent-os/profiles/default/workflows/implementation/bv-helpers.md
 if bv_available; then
     echo "Using BV to discover phases..."
     PHASE_EPICS=$(bv --filter "type:epic" --format json 2>/dev/null || \
-                  bd list --type epic --format json)
+                  bd list --type epic --json)
 else
     echo "Using bd to discover phases..."
-    PHASE_EPICS=$(bd list --type epic --format json)
+    PHASE_EPICS=$(bd list --type epic --json)
 fi
 
 PHASE_COUNT=$(echo "$PHASE_EPICS" | jq '. | length')
@@ -236,9 +236,9 @@ Create orchestration.yml with ALL organism issues across ALL phases:
 # Get all organism issues across all phases
 if bv_available; then
     ORGANISMS=$(bv --filter "type:organism" --format json 2>/dev/null || \
-                bd list --type organism --format json)
+                bd list --type organism --json)
 else
-    ORGANISMS=$(bd list --type organism --format json)
+    ORGANISMS=$(bd list --type organism --json)
 fi
 
 # Choose output path based on mode
@@ -330,7 +330,7 @@ ORGANISMS=$(yq eval '.beads[] | .id' "$ORCHESTRATION_FILE")
 
 # For each organism, infer the correct agent based on title
 while read -r organism_id; do
-    TITLE=$(bd show "$organism_id" --format json | jq -r '.title')
+    TITLE=$(bd show "$organism_id" --json | jq -r '.title')
 
     # Infer agent based on keywords in title
     if [[ "$TITLE" =~ [Dd]atabase|[Mm]odel|[Ss]chema|[Mm]igration ]]; then
@@ -701,7 +701,7 @@ yq eval '.beads[]' "$ORCHESTRATION_FILE" -o json | jq -c '.' | while read -r org
     STANDARDS=$(echo "$organism" | jq -r '.standards | join(", ")')
 
     # Get organism details from beads
-    ORGANISM_DATA=$(bd show "$ORGANISM_ID" --format json)
+    ORGANISM_DATA=$(bd show "$ORGANISM_ID" --json)
     SPEC_LABEL=$(echo "$ORGANISM_DATA" | jq -r '.labels[] | select(startswith("phase-") | not)')
     SPEC_PATH="agent-os/specs/$SPEC_LABEL"
 

@@ -368,7 +368,7 @@ RECENT_CLOSED=$(get_recipe recent | jq -r '[.[] | select(.status == "closed")] |
 echo "Completed yesterday: $RECENT_CLOSED issues"
 
 # What's in progress
-IN_PROGRESS=$(bd list --status in_progress --format json | jq -r '. | length')
+IN_PROGRESS=$(bd list --status in_progress --json | jq -r '. | length')
 echo "In progress: $IN_PROGRESS issues"
 
 # What's blocked

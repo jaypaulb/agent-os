@@ -32,7 +32,7 @@ else
 fi
 
 # Check for issues
-ISSUE_COUNT=$(bd list --format json | jq '. | length')
+ISSUE_COUNT=$(bd list --json | jq '. | length')
 echo "Found $ISSUE_COUNT Beads issues across all phases"
 
 if [ "$ISSUE_COUNT" -eq 0 ]; then
@@ -43,7 +43,7 @@ fi
 # Show all phases
 echo ""
 echo "Phases in this project:"
-bd list --type epic --format json | jq -r '.[] | "  • \(.title) (\(.id))"'
+bd list --type epic --json | jq -r '.[] | "  • \(.title) (\(.id))"'
 
 # Show ready work across all phases
 echo ""
@@ -66,7 +66,7 @@ read -p "Choice [1/2]: " filter_choice
 if [ "$filter_choice" = "2" ]; then
     # List available phases
     echo "Available phases:"
-    bd list --type epic --format json | jq -r '.[] | "  \(.labels[] | select(startswith(\"phase-\"))): \(.title)"'
+    bd list --type epic --json | jq -r '.[] | "  \(.labels[] | select(startswith(\"phase-\"))): \(.title)"'
 
     read -p "Enter phase label (e.g., phase-1): " phase_label
 
@@ -387,8 +387,8 @@ if [ ! -f ".beads_project.json" ]; then
 
   # Get project metadata from Beads
   # Find all phase epics
-  EPIC_COUNT=$(bd list --type epic --format json | jq '. | length')
-  FIRST_EPIC_ID=$(bd list --type epic --format json | jq -r '.[0].id')
+  EPIC_COUNT=$(bd list --type epic --json | jq '. | length')
+  FIRST_EPIC_ID=$(bd list --type epic --json | jq -r '.[0].id')
   PROJECT_NAME=$(basename "$(pwd)")
 
   cat > .beads_project.json <<EOF

@@ -80,8 +80,8 @@ Get execution plan using BV or fall back to bd ready.
 
 **Fallback behavior:**
 - If BV available: Returns `bv --robot-plan --format json`
-- If BV fails: Logs warning, returns `bd ready --format json`
-- If BV unavailable: Returns `bd ready --format json`
+- If BV fails: Logs warning, returns `bd ready --json`
+- If BV unavailable: Returns `bd ready --json`
 
 **Usage:**
 ```bash
@@ -95,10 +95,10 @@ get_execution_plan() {
     if bv_available; then
         bv --robot-plan --format json 2>/dev/null || {
             echo "⚠️  BV plan failed, falling back to bd ready" >&2
-            bd ready --format json
+            bd ready --json
         }
     else
-        bd ready --format json
+        bd ready --json
     fi
 }
 ```

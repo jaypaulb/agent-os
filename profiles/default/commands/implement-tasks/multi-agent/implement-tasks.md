@@ -34,10 +34,10 @@ SPEC_NAME="[this-spec-slug]"
 if bv_available; then
     echo "Finding ready work for $SPEC_NAME using BV..."
     READY=$(bv --unblocked --filter "label:$SPEC_NAME" --format json 2>/dev/null || \
-            bd ready --label "$SPEC_NAME" --format json)
+            bd ready --label "$SPEC_NAME" --json)
 else
     echo "Finding ready work for $SPEC_NAME using bd..."
-    READY=$(bd ready --label "$SPEC_NAME" --format json)
+    READY=$(bd ready --label "$SPEC_NAME" --json)
 fi
 
 # Display ready work
@@ -92,7 +92,7 @@ Check if ALL beads issues for this spec are closed:
 SPEC_NAME="[this-spec-slug]"
 
 # Check for open issues in this spec
-OPEN_ISSUES=$(bd list --label "$SPEC_NAME" --format json | jq -r '.[] | select(.status!="closed") | .id')
+OPEN_ISSUES=$(bd list --label "$SPEC_NAME" --json | jq -r '.[] | select(.status!="closed") | .id')
 
 if [ -z "$OPEN_ISSUES" ]; then
     echo "✓ All issues for $SPEC_NAME are closed"

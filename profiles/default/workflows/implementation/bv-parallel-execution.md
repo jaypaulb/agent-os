@@ -408,15 +408,15 @@ while true; do
 
     # Show in-progress work
     echo "In Progress:"
-    bd list --status in_progress --format json | jq -r '.[] | "  • \(.id) (\(.assignee))"'
+    bd list --status in_progress --json | jq -r '.[] | "  • \(.id) (\(.assignee))"'
 
     # Show completed work
-    CLOSED_COUNT=$(bd list --status closed --format json | jq -r '. | length')
+    CLOSED_COUNT=$(bd list --status closed --json | jq -r '. | length')
     echo ""
     echo "Completed: $CLOSED_COUNT issues"
 
     # Show remaining work
-    OPEN_COUNT=$(bd list --status open --format json | jq -r '. | length')
+    OPEN_COUNT=$(bd list --status open --json | jq -r '. | length')
     echo "Remaining: $OPEN_COUNT issues"
 
     # Show lock status
