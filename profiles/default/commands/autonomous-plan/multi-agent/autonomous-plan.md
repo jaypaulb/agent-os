@@ -355,8 +355,7 @@ For each spec, check if tasks/beads already exist, and create them if missing:
 Check if `.beads/` exists at project root. If not, create Beads issues for all specs:
 
 ```bash
-# Navigate to project root
-cd /path/to/project
+# Should be at project root
 
 if [ ! -d ".beads" ]; then
     echo "Creating Beads issues for all specs..."
@@ -488,10 +487,9 @@ Display the following message to the user:
 Total issues created across all phases:
 [Count from all .beads/ directories]
 
-Ready to start implementation:
+Ready to start implementation (from project root):
 ```bash
-cd agent-os/specs/[first-phase-spec]/
-bd ready
+bd ready --label "phase-1"
 ```
 
 **Next Step**: Run `/auto-build` to launch the autonomous coding harness

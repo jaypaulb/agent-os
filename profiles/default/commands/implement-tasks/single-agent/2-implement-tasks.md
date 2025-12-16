@@ -7,13 +7,11 @@ Now that you have the task group(s) to be implemented, proceed with implementati
 Display a summary of what was implemented.
 
 {{IF tracking_mode_beads}}
-Generate implementation summary using BV diff tracking:
+Generate implementation summary using BV diff tracking (from project root):
 
 ```bash
-cd agent-os/specs/[this-spec]/
-
 # Source BV helpers
-source ../../../workflows/implementation/bv-helpers.md
+source agent-os/workflows/implementation/bv-helpers.md
 
 if bv_available; then
     echo ""
@@ -48,7 +46,7 @@ fi
 Check beads status to see if all work is complete:
 
 ```bash
-cd agent-os/specs/[this-spec]/
+# From project root
 bd list --json | jq -r '.[] | select(.status!="closed")'
 ```
 

@@ -27,10 +27,10 @@ AI agents suffer from context window limitations. When a session ends or context
 
 ---
 
-## Step 1: Navigate to Spec Folder
+## Step 1: Verify Beads Initialized at Project Root
 
 ```bash
-cd agent-os/specs/[this-spec]/
+# From project root
 
 # Verify beads is initialized
 ls .beads/

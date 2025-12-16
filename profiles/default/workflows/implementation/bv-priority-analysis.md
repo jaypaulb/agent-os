@@ -29,10 +29,10 @@ BV analyzes the dependency graph to detect priority misalignments - cases where 
 ### Step 1: Query Priority Recommendations
 
 ```bash
-cd agent-os/specs/[this-spec]/
+# From project root
 
 # Source BV helpers
-source ../../../workflows/implementation/bv-helpers.md
+source agent-os/workflows/implementation/bv-helpers.md
 
 # Get priority recommendations
 PRIORITY_RECS=$(get_priority_recommendations)

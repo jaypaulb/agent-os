@@ -46,8 +46,7 @@ This workflow analyzes `spec.md` to:
 ## Step 1: Initialize Beads at Project Root (Once)
 
 ```bash
-# Navigate to project root
-cd /path/to/project
+# From project root
 
 # Check if already initialized
 if [ ! -d ".beads" ]; then

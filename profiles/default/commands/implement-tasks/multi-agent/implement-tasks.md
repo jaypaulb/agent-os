@@ -22,11 +22,10 @@ First, check if the user has already provided instructions about which task grou
 Query beads to find ready work for this spec:
 
 ```bash
-# Navigate to project root (where .beads/ is located)
-cd /path/to/project-root
+# From project root (where .beads/ is located)
 
 # Source BV helpers
-source agent-os/profiles/default/workflows/implementation/bv-helpers.md
+source agent-os/workflows/implementation/bv-helpers.md
 
 # Get spec name
 SPEC_NAME="[this-spec-slug]"
@@ -87,8 +86,7 @@ Instruct the subagent to:
 Check if ALL beads issues for this spec are closed:
 
 ```bash
-# Navigate to project root
-cd /path/to/project-root
+# From project root
 
 # Get spec name
 SPEC_NAME="[this-spec-slug]"

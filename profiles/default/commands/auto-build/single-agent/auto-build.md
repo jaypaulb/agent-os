@@ -186,17 +186,13 @@ echo "Harness path: $HARNESS_PATH"
 if [ -d "$HARNESS_PATH" ]; then
   echo "✓ Harness found at $HARNESS_PATH"
   echo "Updating harness..."
-  cd "$HARNESS_PATH"
-  git fetch origin
-  git checkout "$HARNESS_BRANCH"
-  git pull origin "$HARNESS_BRANCH"
-  cd -
+  git -C "$HARNESS_PATH" fetch origin
+  git -C "$HARNESS_PATH" checkout "$HARNESS_BRANCH"
+  git -C "$HARNESS_PATH" pull origin "$HARNESS_BRANCH"
 else
   echo "Installing harness..."
   git clone "$HARNESS_REPO" "$HARNESS_PATH"
-  cd "$HARNESS_PATH"
-  git checkout "$HARNESS_BRANCH"
-  cd -
+  git -C "$HARNESS_PATH" checkout "$HARNESS_BRANCH"
 
   # Add .harness to .gitignore if not already there
   if ! grep -q "^\.harness/$" .gitignore 2>/dev/null; then
@@ -318,8 +314,6 @@ fi
 Launch the harness with unlimited iterations:
 
 ```bash
-cd "$PROJECT_ROOT"
-
 # Set environment variables
 export CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN}"
 
@@ -387,11 +381,10 @@ Session 2 Summary:
 
 ## PHASE 6: Monitor Progress
 
-While the harness runs, you can monitor progress in another terminal:
+While the harness runs, you can monitor progress in another terminal from project root:
 
 ```bash
-# Navigate to project root (where .beads/ is located)
-cd /path/to/project
+# Run from project root (where .beads/ is located)
 
 # View all issues
 bd list --json | jq -r '.[] | "\(.status) | \(.id): \(.title)"' | column -t -s '|'
@@ -473,8 +466,7 @@ Auto-build interrupted.
 **Progress Saved**:
 All work is tracked in .beads/issues.jsonl (git-backed).
 
-**Resume anytime**:
-cd /path/to/project  # Navigate to project root
+**Resume anytime** (from project root):
 /auto-build
 
 The harness will pick up where it left off using bd ready to find the next unblocked issue.

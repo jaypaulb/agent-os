@@ -134,10 +134,10 @@ The auth service is an authority because many features depend on it. It's a comm
 ### Query All Insights
 
 ```bash
-cd agent-os/specs/[this-spec]/
+# From project root
 
 # Source BV helpers
-source ../../../workflows/implementation/bv-helpers.md
+source agent-os/workflows/implementation/bv-helpers.md
 
 if bv_available; then
     INSIGHTS=$(get_graph_insights)

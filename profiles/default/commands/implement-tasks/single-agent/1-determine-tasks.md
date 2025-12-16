@@ -5,13 +5,11 @@ First, check if the user has already provided instructions about which task grou
 **If the user has NOT provided instructions:**
 
 {{IF tracking_mode_beads}}
-Query beads to find ready work using execution planning:
+Query beads to find ready work using execution planning (from project root):
 
 ```bash
-cd agent-os/specs/[this-spec]/
-
 # Source BV helpers
-source ../../../workflows/implementation/bv-helpers.md
+source agent-os/workflows/implementation/bv-helpers.md
 
 # Check if bv is available
 if bv_available; then

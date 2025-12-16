@@ -29,8 +29,7 @@ Beads-based implementation differs from tasks.md in key ways:
 ### Query Current State
 
 ```bash
-# Navigate to spec folder
-cd agent-os/specs/[this-spec]/
+# From project root
 
 # Find work assigned to you that's in progress
 bd list --json | jq -r '.[] | select(.assignee=="[your-agent-name]" and .status=="in_progress") | "\(.id): \(.title)"'

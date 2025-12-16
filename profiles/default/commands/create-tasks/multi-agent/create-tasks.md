@@ -7,8 +7,7 @@ You are creating task breakdowns for all specs that need them.
 First, find all specs in the project:
 
 ```bash
-# Navigate to project root
-cd /path/to/project
+# From project root
 
 # Find all spec folders
 SPEC_FOLDERS=$(find agent-os/specs -mindepth 1 -maxdepth 1 -type d)

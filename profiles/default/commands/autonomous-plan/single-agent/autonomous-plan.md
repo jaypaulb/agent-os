@@ -224,10 +224,9 @@ The product-planner was called after each phase to update roadmap.md and tech-st
 Total issues created across all phases:
 [Count from all .beads/ directories]
 
-Ready to start implementation:
+Ready to start implementation (from project root):
 ```bash
-cd agent-os/specs/[first-phase-spec]/
-bd ready
+bd ready --label "phase-1"
 ```
 
 **Next Step**: Run `/auto-build` to launch the autonomous coding harness
