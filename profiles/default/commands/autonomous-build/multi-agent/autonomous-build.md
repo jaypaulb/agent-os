@@ -448,14 +448,84 @@ echo "  task_id: \"$TASK_ID\""
 echo "  block: true  # Get full output"
 echo ""
 
-# NOTE: After getting output, analyze for success/failure
+# NOTE: After getting output, validate through 5-gate pipeline
 
-# Validation logic (simplified for now - Phase 3 will add full validation pipeline)
+# Check if organism was closed by agent
 ORGANISM_STATUS=$(bd show "$ORGANISM_ID" --format json 2>/dev/null | jq -r '.status')
 
-if [ "$ORGANISM_STATUS" = "closed" ]; then
-  # SUCCESS - Commit and move to completed
-  echo "🎉 Organism $ORGANISM_ID completed successfully"
+if [ "$ORGANISM_STATUS" != "closed" ]; then
+  # Agent didn't close organism - treat as failure
+  echo "❌ Agent completed but organism status is: $ORGANISM_STATUS"
+  echo "Expected: closed"
+  # Skip validation, go to retry logic below
+  VALIDATION_PASSED=false
+else
+  # Run 5-gate validation pipeline
+  echo "Running validation pipeline..."
+  echo ""
+
+  # Export variables for validator
+  export ORGANISM_ID
+  export COMMIT_BEFORE=$(cat .beads/last-iteration-commit 2>/dev/null || git rev-parse HEAD^)
+  export ATTEMPT=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\") | .attempt // 1" .beads/autonomous-state/work-queue.json)
+
+  # Run validator
+  bash profiles/default/workflows/implementation/validation/organism-validator.md
+  VALIDATION_EXIT_CODE=$?
+
+  case $VALIDATION_EXIT_CODE in
+    0)
+      # All gates passed
+      VALIDATION_PASSED=true
+      ;;
+    3)
+      # Merge conflict detected
+      echo "⚠️  Merge conflict detected"
+      CONFLICT_DETAILS=$(cat /tmp/conflict-details.txt 2>/dev/null || echo "No details available")
+      echo "$CONFLICT_DETAILS"
+
+      # Move to blocked queue (Phase 4 will handle resolution)
+      ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
+      BLOCKED_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
+        blocked_by: \"merge-conflict\",
+        reason: \"Merge conflict with main branch\",
+        blocked_at: \"$(date -Iseconds)\"
+      }")
+
+      jq "
+        .blocked += [$BLOCKED_DATA] |
+        .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
+      " .beads/autonomous-state/work-queue.json > /tmp/wq.json
+      mv /tmp/wq.json .beads/autonomous-state/work-queue.json
+
+      # Remove lock
+      rm -f ".beads/autonomous-state/locks/${ORGANISM_ID}.lock"
+
+      # Free slot (skip to end)
+      jq "
+        .active = [.active[] | select(.slot != $SLOT)] |
+        .available_slots += [$SLOT] |
+        .available_slots |= sort
+      " .beads/autonomous-state/agent-pool.json > /tmp/ap.json
+      mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
+
+      echo "✓ Slot $SLOT freed"
+      echo "Organism moved to blocked queue (Phase 4 will resolve conflict)"
+      echo ""
+      continue  # Skip to next agent
+      ;;
+    *)
+      # Other validation failure (gate 1, 2, 4, or 5)
+      echo "❌ Validation failed at gate $VALIDATION_EXIT_CODE"
+      VALIDATION_PASSED=false
+      # Will retry below
+      ;;
+  esac
+fi
+
+if [ "$VALIDATION_PASSED" = true ]; then
+  # SUCCESS - Move to completed
+  echo "🎉 Organism $ORGANISM_ID validated and completed successfully"
 
   COMMIT_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 
@@ -486,47 +556,37 @@ if [ "$ORGANISM_STATUS" = "closed" ]; then
   echo "✓ Slot $SLOT freed"
   echo ""
 
-elif [ "$ORGANISM_STATUS" = "in_progress" ]; then
-  # PARTIAL - Agent exited early (context limits), retry later
-  echo "⚠️  Organism $ORGANISM_ID partially complete (context limits)"
-  echo "Moving back to ready queue for next session"
-
-  # Move in_progress → ready
-  ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
-
-  jq "
-    .ready += [$ORGANISM_DATA | del(.claimed_at, .slot, .task_id, .attempt)] |
-    .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
-  " .beads/autonomous-state/work-queue.json > /tmp/wq.json
-  mv /tmp/wq.json .beads/autonomous-state/work-queue.json
-
-  # Remove lock
-  rm -f ".beads/autonomous-state/locks/${ORGANISM_ID}.lock"
-
-  # Free agent slot
-  jq "
-    .active = [.active[] | select(.slot != $SLOT)] |
-    .available_slots += [$SLOT] |
-    .available_slots |= sort
-  " .beads/autonomous-state/agent-pool.json > /tmp/ap.json
-  mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
-
-  echo "✓ Slot $SLOT freed"
-  echo ""
-
 else
-  # FAILED - Check attempt count
+  # VALIDATION FAILED OR PARTIAL - Check attempt count and retry
   ATTEMPT=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\") | .attempt // 1" .beads/autonomous-state/work-queue.json)
   MAX_ATTEMPTS=3
 
   if [[ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]]; then
-    # Retry
-    echo "❌ Organism $ORGANISM_ID failed (attempt $ATTEMPT/$MAX_ATTEMPTS)"
-    echo "Moving to ready queue for retry"
+    # Retry with learnings
+    echo "❌ Organism $ORGANISM_ID failed validation (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+    echo "Moving to ready queue for retry with error learnings"
+
+    # Extract error context for learning system
+    if [ "$ORGANISM_STATUS" = "in_progress" ]; then
+      FAILURE_REASON="Partial implementation (context limits)"
+    elif [ "$VALIDATION_PASSED" = false ]; then
+      FAILURE_REASON="Validation failed at gate $VALIDATION_EXIT_CODE"
+    else
+      FAILURE_REASON="Unknown failure"
+    fi
+
+    echo "Failure reason: $FAILURE_REASON"
+
+    # TODO Phase 5: Extract detailed error patterns and add to improvements.json
+    # For now, just note the failure reason
 
     # Increment attempt count and move to ready
     ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
-    RETRY_DATA=$(echo "$ORGANISM_DATA" | jq ".attempt = $((ATTEMPT + 1)) | del(.claimed_at, .slot, .task_id)")
+    RETRY_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
+      attempt: $((ATTEMPT + 1)),
+      last_failure: \"$FAILURE_REASON\",
+      last_failure_at: \"$(date -Iseconds)\"
+    } | del(.claimed_at, .slot, .task_id)")
 
     jq "
       .ready += [$RETRY_DATA] |
@@ -534,21 +594,68 @@ else
     " .beads/autonomous-state/work-queue.json > /tmp/wq.json
     mv /tmp/wq.json .beads/autonomous-state/work-queue.json
 
-    # TODO Phase 5: Extract error patterns and add to improvements.json
-
   else
-    # Max attempts reached - create analysis issue
+    # Max attempts reached - extract learnings and move to failed
     echo "❌ Organism $ORGANISM_ID failed after $MAX_ATTEMPTS attempts"
-    echo "Creating analysis issue..."
+    echo "Extracting error patterns for analysis..."
 
-    # TODO Phase 5: Create analysis issue and assign to general-purpose or Jaypaul
-    # For now, just move to failed queue
-
+    # Get failure history
     ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
+    LAST_FAILURE=$(echo "$ORGANISM_DATA" | jq -r '.last_failure // "Unknown"')
+
+    # Create failure analysis file
+    mkdir -p .beads/autonomous-state/failures
+    ANALYSIS_FILE=".beads/autonomous-state/failures/${ORGANISM_ID}-analysis.md"
+
+    cat > "$ANALYSIS_FILE" <<EOF
+# Failure Analysis: $ORGANISM_ID
+
+## Organism Details
+
+$(bd show "$ORGANISM_ID" 2>/dev/null || echo "Issue not found")
+
+## Failure Summary
+
+- **Attempts**: $MAX_ATTEMPTS
+- **Last failure**: $LAST_FAILURE
+- **Failed at**: $(date -Iseconds)
+
+## Failure History
+
+$(echo "$ORGANISM_DATA" | jq -r 'if .last_failure then "Attempt \(.attempt): \(.last_failure) at \(.last_failure_at)" else "No history available" end')
+
+## Possible Causes
+
+- Organism too complex (needs decomposition into smaller organisms)
+- Missing dependencies (requires other organisms to be completed first)
+- Incorrect implementation approach
+- Test failures indicating spec misunderstanding
+- Merge conflicts with concurrent work
+
+## Recommended Actions
+
+1. Review error messages and logs
+2. Check if organism dependencies are met
+3. Consider breaking into smaller sub-organisms
+4. Verify spec requirements are clear
+5. Manual implementation or escalation to Jaypaul
+
+## Next Steps
+
+TODO Phase 5:
+- Create Beads analysis issue
+- Assign to general-purpose agent for automated analysis
+- If automated analysis fails, escalate to Jaypaul
+EOF
+
+    echo "✓ Analysis file created: $ANALYSIS_FILE"
+
+    # Move to failed queue with analysis reference
     FAILED_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
       attempts: $MAX_ATTEMPTS,
-      last_error: \"Status not closed after implementation\",
-      failed_at: \"$(date -Iseconds)\"
+      last_error: \"$LAST_FAILURE\",
+      failed_at: \"$(date -Iseconds)\",
+      analysis_file: \"$ANALYSIS_FILE\"
     }")
 
     jq "
@@ -556,6 +663,9 @@ else
       .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
     " .beads/autonomous-state/work-queue.json > /tmp/wq.json
     mv /tmp/wq.json .beads/autonomous-state/work-queue.json
+
+    echo "Organism moved to failed queue"
+    echo "Phase 5 will implement automated analysis and escalation"
   fi
 
   # Remove lock
