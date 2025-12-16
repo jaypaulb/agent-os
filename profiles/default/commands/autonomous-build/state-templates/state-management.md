@@ -1,399 +1,243 @@
 # State Management Workflow
 
-This workflow defines how the autonomous-build orchestrator initializes, updates, and recovers state.
+This workflow defines how the autonomous-build orchestrator manages state using `bd` and `bv` exclusively.
 
-## State Initialization
+## Core Principle
 
-On first run of `/autonomous-build`, the orchestrator creates the state directory:
+**`bd` and `bv` ARE the source of truth.** We do NOT maintain parallel state files.
+
+| Need | bd/bv Solution |
+|------|----------------|
+| Ready work | `bd ready --json` |
+| In-progress work | `bd list --status in_progress --json` |
+| Completed work | `bd list --status closed --json` |
+| Failed work | `bd list --label failed --json` |
+| Work selection | `bv --robot-plan` |
+| Priority insights | `bv --robot-priority` |
+| Blocked issues | `bd blocked` |
+
+## Minimal Local State
+
+We only track two things locally:
+
+1. **Agent slot assignments** - Which Claude Code task is working on which issue
+2. **Learning data** - Error patterns for improving future agents
+
+### Agent Pool (agent-pool.json)
+
+```json
+{
+  "max_agents": 5,
+  "slots": {
+    "1": {"organism_id": "bd-123", "task_id": "abc123", "started_at": "2024-01-01T00:00:00Z"},
+    "2": {"organism_id": "bd-456", "task_id": "def456", "started_at": "2024-01-01T00:00:00Z"}
+  },
+  "heartbeat_interval": 10
+}
+```
+
+### Learning System (improvements.json)
+
+```json
+{
+  "common_errors": [
+    {"pattern": "Missing import", "fix": "Check imports at top of file", "seen_count": 3}
+  ],
+  "best_practices": [],
+  "conflict_patterns": []
+}
+```
+
+## State Operations
+
+### Initialize State
 
 ```bash
-# Create state directory structure
+# Create minimal state directory
 mkdir -p .beads/autonomous-state/locks
 mkdir -p .beads/autonomous-state/learning
-mkdir -p .beads/autonomous-state/failures
 
-# Initialize work-queue.json
-cat > .beads/autonomous-state/work-queue.json <<'EOF'
-{
-  "ready": [],
-  "in_progress": [],
-  "completed": [],
-  "failed": [],
-  "blocked": []
-}
-EOF
-
-# Initialize agent-pool.json
+# Initialize agent pool
 cat > .beads/autonomous-state/agent-pool.json <<'EOF'
 {
   "max_agents": 5,
-  "active": [],
-  "available_slots": [1, 2, 3, 4, 5],
+  "slots": {},
   "heartbeat_interval": 10
 }
 EOF
 
-# Initialize improvements.json
-cat > .beads/autonomous-state/learning/improvements.json <<'EOF'
+# Initialize learning system (if not exists)
+if [ ! -f ".beads/autonomous-state/learning/improvements.json" ]; then
+  cat > .beads/autonomous-state/learning/improvements.json <<'EOF'
 {
   "common_errors": [],
   "best_practices": [],
-  "conflict_patterns": [],
-  "organism_specific": {
-    "database-layer": [],
-    "api-layer": [],
-    "ui-component": []
-  },
-  "metrics": {
-    "total_iterations": 0,
-    "total_organisms": 0,
-    "success_rate_trend": []
-  }
+  "conflict_patterns": []
 }
 EOF
-
-echo "✓ State initialized"
+fi
 ```
 
-## Loading Ready Work
-
-After initialization, populate work queue from orchestration.yml or `bd ready`:
+### Query Ready Work
 
 ```bash
-# Check if orchestration.yml exists
-if [ -f ".beads/autonomous-state/orchestration.yml" ]; then
-  # Use orchestration.yml (from /orchestrate-tasks --headless)
-  READY_ORGANISMS=$(yq eval '.beads[] | select(.status == "todo") | .id' .beads/autonomous-state/orchestration.yml)
+# Use bd ready for issues with no blockers
+bd ready --json | jq '. | length'
 
-  # Populate ready queue
-  for ORGANISM_ID in $READY_ORGANISMS; then
-    ORGANISM_DATA=$(yq eval ".beads[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/orchestration.yml -o json)
+# Use bv --robot-plan for dependency-respecting parallel tracks
+bv --robot-plan | jq '.plan.tracks'
+```
 
-    # Add to work-queue.json ready array
-    jq ".ready += [$ORGANISM_DATA]" .beads/autonomous-state/work-queue.json > /tmp/wq.json
-    mv /tmp/wq.json .beads/autonomous-state/work-queue.json
-  done
-else
-  # Fallback: Use bd ready
-  READY_JSON=$(bd ready --json 2>/dev/null || echo "[]")
+### Claim an Issue
 
-  # Transform to work-queue format
-  echo "$READY_JSON" | jq '{
-    ready: [.[] | {
-      id: .id,
-      title: .title,
-      type: .type,
-      assignee: "general-purpose",
-      priority: 5,
-      predicted_files: []
-    }],
-    in_progress: [],
-    completed: [],
-    failed: [],
-    blocked: []
-  }' > .beads/autonomous-state/work-queue.json
-fi
+```bash
+ISSUE_ID="bd-123"
+SLOT=1
 
-READY_COUNT=$(jq '.ready | length' .beads/autonomous-state/work-queue.json)
-echo "✓ Loaded $READY_COUNT organisms into queue"
+# Create lock file
+echo "$SLOT|$(date -Iseconds)" > ".beads/autonomous-state/locks/${ISSUE_ID}.lock"
+
+# Update status via bd
+bd update "$ISSUE_ID" --status in_progress
+
+# Update agent pool
+jq ".slots[\"$SLOT\"] = {\"organism_id\": \"$ISSUE_ID\", \"task_id\": \"$TASK_ID\", \"started_at\": \"$(date -Iseconds)\"}" \
+  .beads/autonomous-state/agent-pool.json > /tmp/ap.json && mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
+```
+
+### Release an Issue (Success)
+
+```bash
+ISSUE_ID="bd-123"
+SLOT=1
+
+# Remove lock
+rm -f ".beads/autonomous-state/locks/${ISSUE_ID}.lock"
+
+# Issue is already closed by agent via: bd close $ISSUE_ID
+
+# Free slot
+jq "del(.slots[\"$SLOT\"])" .beads/autonomous-state/agent-pool.json > /tmp/ap.json
+mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
+```
+
+### Release an Issue (Failure)
+
+```bash
+ISSUE_ID="bd-123"
+SLOT=1
+ATTEMPT=3
+
+# Remove lock
+rm -f ".beads/autonomous-state/locks/${ISSUE_ID}.lock"
+
+# Mark as failed via bd label
+bd label add "$ISSUE_ID" "failed"
+bd comment "$ISSUE_ID" "FAILED: Max attempts ($ATTEMPT) reached. Manual review required."
+
+# Free slot
+jq "del(.slots[\"$SLOT\"])" .beads/autonomous-state/agent-pool.json > /tmp/ap.json
+mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
+```
+
+### Track Attempts
+
+```bash
+ISSUE_ID="bd-123"
+
+# Check current attempt via label
+ATTEMPT=$(bd show "$ISSUE_ID" --json | jq -r '.labels | map(select(startswith("attempt-"))) | .[0] // "attempt-0"' | sed 's/attempt-//')
+
+# Increment attempt
+NEXT_ATTEMPT=$((ATTEMPT + 1))
+bd label remove "$ISSUE_ID" "attempt-$ATTEMPT" 2>/dev/null || true
+bd label add "$ISSUE_ID" "attempt-$NEXT_ATTEMPT"
+
+# Reset for retry
+bd update "$ISSUE_ID" --status open
+```
+
+### Query Current State
+
+```bash
+# Ready count
+READY=$(bd ready --json | jq '. | length')
+
+# In-progress count
+IN_PROGRESS=$(bd list --status in_progress --json | jq '. | length')
+
+# Closed count
+CLOSED=$(bd list --status closed --json | jq '. | length')
+
+# Failed count (via label)
+FAILED=$(bd list --label failed --json | jq '. | length' || echo "0")
+
+# Active agents
+ACTIVE=$(jq '.slots | keys | length' .beads/autonomous-state/agent-pool.json)
+
+echo "Ready: $READY | In Progress: $IN_PROGRESS | Closed: $CLOSED | Failed: $FAILED | Active: $ACTIVE"
 ```
 
 ## State Recovery
 
-If interrupted (Ctrl+C, crash), recover state on next run:
+If interrupted (Ctrl+C, crash), recovery is simple:
 
 ```bash
-# Check if state exists
-if [ -f ".beads/autonomous-state/work-queue.json" ]; then
-  echo "=== State Recovery ==="
-  echo ""
+# Clean stale locks
+rm -f .beads/autonomous-state/locks/*.lock
 
-  # Check for in_progress organisms (agents were killed)
-  IN_PROGRESS=$(jq '.in_progress' .beads/autonomous-state/work-queue.json)
-  IN_PROGRESS_COUNT=$(echo "$IN_PROGRESS" | jq 'length')
+# Reset agent pool (slots)
+jq '.slots = {}' .beads/autonomous-state/agent-pool.json > /tmp/ap.json
+mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
 
-  if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
-    echo "Found $IN_PROGRESS_COUNT interrupted organisms:"
-    echo "$IN_PROGRESS" | jq -r '.[] | "  • \(.id): \(.title) (slot \(.slot))"'
-    echo ""
-
-    # Move in_progress → ready (retry)
-    jq '.ready += .in_progress | .in_progress = []' .beads/autonomous-state/work-queue.json > /tmp/wq.json
-    mv /tmp/wq.json .beads/autonomous-state/work-queue.json
-
-    echo "✓ Moved to ready queue for retry"
-  fi
-
-  # Clean up stale locks
-  rm -f .beads/autonomous-state/locks/*.lock
-  echo "✓ Cleaned stale locks"
-
-  # Reset agent pool
-  jq '.active = [] | .available_slots = [1, 2, 3, 4, 5]' .beads/autonomous-state/agent-pool.json > /tmp/ap.json
-  mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
-  echo "✓ Reset agent pool"
-
-  # Show current state
-  READY_COUNT=$(jq '.ready | length' .beads/autonomous-state/work-queue.json)
-  COMPLETED_COUNT=$(jq '.completed | length' .beads/autonomous-state/work-queue.json)
-  FAILED_COUNT=$(jq '.failed | length' .beads/autonomous-state/work-queue.json)
-
-  echo ""
-  echo "Current state:"
-  echo "  Ready: $READY_COUNT"
-  echo "  Completed: $COMPLETED_COUNT"
-  echo "  Failed: $FAILED_COUNT"
-  echo ""
-fi
+# bd status is already correct - in_progress issues stay in_progress
+# They'll be picked up on the next run
 ```
 
-## Claiming an Organism
-
-When agent slot is available, claim next organism from ready queue:
-
-```bash
-claim_organism() {
-  ORGANISM_ID=$1
-  SLOT=$2
-  TASK_ID=$3
-
-  # Create lock file
-  LOCK_FILE=".beads/autonomous-state/locks/${ORGANISM_ID}.lock"
-
-  # Check if already locked
-  if [ -f "$LOCK_FILE" ]; then
-    echo "❌ Organism $ORGANISM_ID already claimed"
-    return 1
-  fi
-
-  # Create lock
-  echo "$SLOT|$TASK_ID|$(date -Iseconds)" > "$LOCK_FILE"
-
-  # Move organism from ready → in_progress
-  ORGANISM_DATA=$(jq ".ready[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
-
-  # Add claim metadata
-  CLAIMED_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
-    claimed_at: \"$(date -Iseconds)\",
-    slot: $SLOT,
-    task_id: \"$TASK_ID\",
-    attempt: 1
-  }")
-
-  # Update work queue
-  jq "
-    .in_progress += [$CLAIMED_DATA] |
-    .ready = [.ready[] | select(.id != \"$ORGANISM_ID\")]
-  " .beads/autonomous-state/work-queue.json > /tmp/wq.json
-  mv /tmp/wq.json .beads/autonomous-state/work-queue.json
-
-  echo "✓ Claimed $ORGANISM_ID in slot $SLOT"
-  return 0
-}
-```
-
-## Releasing an Organism
-
-When agent completes (success, fail, or blocked):
-
-```bash
-release_organism() {
-  ORGANISM_ID=$1
-  NEW_STATUS=$2  # completed, failed, blocked
-  METADATA=$3     # JSON with status-specific data
-
-  # Remove lock
-  rm -f ".beads/autonomous-state/locks/${ORGANISM_ID}.lock"
-
-  # Get organism from in_progress
-  ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
-
-  # Add release metadata
-  RELEASED_DATA=$(echo "$ORGANISM_DATA" | jq ". + $METADATA")
-
-  # Update work queue
-  jq "
-    .$NEW_STATUS += [$RELEASED_DATA] |
-    .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
-  " .beads/autonomous-state/work-queue.json > /tmp/wq.json
-  mv /tmp/wq.json .beads/autonomous-state/work-queue.json
-
-  echo "✓ Released $ORGANISM_ID → $NEW_STATUS"
-}
-
-# Example: Mark completed
-release_organism "bd-org-123" "completed" "{
-  \"completed_at\": \"$(date -Iseconds)\",
-  \"commit_sha\": \"$(git rev-parse HEAD)\"
-}"
-
-# Example: Mark failed
-release_organism "bd-org-456" "failed" "{
-  \"attempts\": 3,
-  \"last_error\": \"Tests failed\",
-  \"analysis_issue_id\": \"bd-789\",
-  \"failed_at\": \"$(date -Iseconds)\"
-}"
-
-# Example: Mark blocked
-release_organism "bd-org-789" "blocked" "{
-  \"blocked_by\": \"bd-org-456\",
-  \"reason\": \"Merge conflict\",
-  \"blocked_at\": \"$(date -Iseconds)\"
-}"
-```
-
-## Agent Pool Management
-
-Track active agents in slots 1-5:
-
-```bash
-# Find free slot
-find_free_slot() {
-  jq -r '.available_slots[0]' .beads/autonomous-state/agent-pool.json
-}
-
-# Add agent to pool
-add_agent() {
-  SLOT=$1
-  AGENT_TYPE=$2
-  ORGANISM_ID=$3
-  TASK_ID=$4
-
-  AGENT_DATA=$(jq -n "{
-    slot: $SLOT,
-    agent_type: \"$AGENT_TYPE\",
-    organism_id: \"$ORGANISM_ID\",
-    task_id: \"$TASK_ID\",
-    started_at: \"$(date -Iseconds)\",
-    last_checked: \"$(date -Iseconds)\",
-    status: \"running\"
-  }")
-
-  jq "
-    .active += [$AGENT_DATA] |
-    .available_slots = [.available_slots[] | select(. != $SLOT)]
-  " .beads/autonomous-state/agent-pool.json > /tmp/ap.json
-  mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
-
-  echo "✓ Agent in slot $SLOT: $AGENT_TYPE → $ORGANISM_ID"
-}
-
-# Remove agent from pool
-remove_agent() {
-  SLOT=$1
-
-  jq "
-    .active = [.active[] | select(.slot != $SLOT)] |
-    .available_slots += [$SLOT] |
-    .available_slots |= sort
-  " .beads/autonomous-state/agent-pool.json > /tmp/ap.json
-  mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
-
-  echo "✓ Freed slot $SLOT"
-}
-
-# Get active agent count
-get_active_count() {
-  jq '.active | length' .beads/autonomous-state/agent-pool.json
-}
-
-# Get max agents (from config or default)
-get_max_agents() {
-  if [ -f ".beads/autonomous-config.yml" ]; then
-    yq eval '.session.max_agents // 5' .beads/autonomous-config.yml
-  else
-    echo "5"
-  fi
-}
-```
+**Why this works:** bd status is the source of truth. Issues marked `in_progress` will be retried automatically when the next run queries `bd ready` (which includes in_progress issues).
 
 ## Learning System
 
-Extract errors and update improvements:
+Extract errors and improve future agents:
 
 ```bash
 # Add error pattern
 add_error_pattern() {
-  PATTERN=$1
-  FIX=$2
-  CATEGORY=$3
+  local PATTERN="$1"
+  local FIX="$2"
 
   # Check if pattern exists
-  EXISTING=$(jq ".common_errors[] | select(.pattern == \"$PATTERN\")" .beads/autonomous-state/learning/improvements.json)
+  EXISTS=$(jq ".common_errors[] | select(.pattern == \"$PATTERN\")" .beads/autonomous-state/learning/improvements.json)
 
-  if [ -n "$EXISTING" ]; then
-    # Increment seen_count
-    jq "
-      .common_errors = [.common_errors[] |
-        if .pattern == \"$PATTERN\" then
-          .seen_count += 1 |
-          .last_seen = \"$(date -Iseconds)\"
-        else
-          .
-        end
-      ]
-    " .beads/autonomous-state/learning/improvements.json > /tmp/improvements.json
+  if [ -n "$EXISTS" ]; then
+    # Increment count
+    jq "(.common_errors[] | select(.pattern == \"$PATTERN\")).seen_count += 1" \
+      .beads/autonomous-state/learning/improvements.json > /tmp/imp.json
   else
-    # Add new pattern
-    NEW_PATTERN=$(jq -n "{
-      pattern: \"$PATTERN\",
-      fix: \"$FIX\",
-      category: \"$CATEGORY\",
-      seen_count: 1,
-      first_seen: \"$(date -Iseconds)\",
-      last_seen: \"$(date -Iseconds)\",
-      trending: \"stable\"
-    }")
-
-    jq ".common_errors += [$NEW_PATTERN]" .beads/autonomous-state/learning/improvements.json > /tmp/improvements.json
+    # Add new
+    jq ".common_errors += [{\"pattern\": \"$PATTERN\", \"fix\": \"$FIX\", \"seen_count\": 1}]" \
+      .beads/autonomous-state/learning/improvements.json > /tmp/imp.json
   fi
 
-  mv /tmp/improvements.json .beads/autonomous-state/learning/improvements.json
+  mv /tmp/imp.json .beads/autonomous-state/learning/improvements.json
 }
 
-# Get improvements for agent prompt injection
-get_improvements_for_prompt() {
-  jq -r '
-    .common_errors |
-    group_by(.category) |
-    map({
-      category: .[0].category,
-      patterns: [.[] | {pattern: .pattern, fix: .fix}] | .[0:3]
-    }) |
-    .[] |
-    "\(.category) issues:",
-    (.patterns[] | "  ❌ \(.pattern)\n  ✅ \(.fix)")
-  ' .beads/autonomous-state/learning/improvements.json
+# Get improvements for agent prompt
+get_improvements() {
+  jq -r '.common_errors[:3] | map("❌ \(.pattern)\n✅ \(.fix)") | join("\n\n")' \
+    .beads/autonomous-state/learning/improvements.json
 }
 ```
 
-## Usage in Orchestrator
+## Summary
 
-The orchestrator uses these functions in its main loop:
+| What we DON'T track locally | What we DO track locally |
+|-----------------------------|--------------------------|
+| work-queue.json | agent-pool.json (slots only) |
+| orchestration.yml | improvements.json (learning) |
+| Issue status | Lock files (temp) |
+| Issue metadata | |
+| Priority | |
+| Dependencies | |
 
-```markdown
-## INITIALIZATION
-1. Check if state exists
-2. If not: initialize state files
-3. If yes: recover from interruption
-4. Load ready work into queue
-
-## MAIN LOOP
-while work_queue or active_agents:
-  1. Check for free slots
-  2. If free slots and ready work:
-     - claim_organism()
-     - spawn agent (background)
-     - add_agent() to pool
-  3. For each active agent:
-     - Check status (non-blocking)
-     - If completed:
-       - Validate work
-       - If success: release_organism("completed")
-       - If fail: extract errors, release_organism("failed" or "blocked")
-       - remove_agent() from pool
-  4. Sleep (heartbeat_interval)
-```
-
-See `/profiles/default/commands/autonomous-build/multi-agent/autonomous-build.md` for full implementation.
+**bd/bv = source of truth. Local state = minimal coordination.**

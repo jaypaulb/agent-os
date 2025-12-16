@@ -313,23 +313,16 @@ if [ $VALIDATION_EXIT_CODE -eq 3 ]; then
   # 2. Serialize conflicting organism (block until other complete)
   # 3. Escalate to manual review (create issue)
 
-  # For now (Phase 3): Move to blocked queue
-  ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
-  BLOCKED_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
-    blocked_by: \"merge-conflict\",
-    reason: \"Merge conflict with main branch\",
-    blocked_at: \"$(date -Iseconds)\",
-    conflict_details: \"$(cat /tmp/conflict-details.txt | jq -sR .)\"
-  }")
+  # Mark as blocked via bd labels (source of truth)
+  bd label add "$ORGANISM_ID" "merge-conflict"
+  bd label add "$ORGANISM_ID" "blocked"
+  bd comment "$ORGANISM_ID" "BLOCKED: Merge conflict with main branch. Details in /tmp/conflict-details.txt"
 
-  jq "
-    .blocked += [$BLOCKED_DATA] |
-    .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
-  " .beads/autonomous-state/work-queue.json > /tmp/wq.json
-  mv /tmp/wq.json .beads/autonomous-state/work-queue.json
+  # Reset status to open (will be retried with conflict resolution)
+  bd update "$ORGANISM_ID" --status open
 
-  echo "Organism moved to blocked queue"
-  echo "Phase 4 will implement conflict resolution strategies"
+  echo "Organism marked as blocked (merge-conflict label)"
+  echo "Will retry with conflict resolution strategy"
 fi
 ```
 

@@ -275,8 +275,8 @@ Test a random previously completed organism to ensure no regressions:
 echo "=== Gate 4: Regression Sample ==="
 echo ""
 
-# Get random completed organism
-COMPLETED_ORGANISMS=$(jq -r '.completed[].id' .beads/autonomous-state/work-queue.json 2>/dev/null || echo "")
+# Get random completed organism from bd (source of truth)
+COMPLETED_ORGANISMS=$(bd list --status closed --json 2>/dev/null | jq -r '.[].id' || echo "")
 
 if [ -n "$COMPLETED_ORGANISMS" ]; then
   # Pick random organism
