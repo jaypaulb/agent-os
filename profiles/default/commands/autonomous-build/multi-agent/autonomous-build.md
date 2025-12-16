@@ -510,7 +510,40 @@ HEARTBEAT=$(jq '.heartbeat_interval' .beads/autonomous-state/agent-pool.json)
 sleep $HEARTBEAT
 ```
 
-**Then loop back to STEP 1**.
+### STEP 7: Clear Context Before Next Iteration
+
+**CRITICAL**: Before starting the next loop iteration, clear context to prevent accumulation.
+
+```bash
+echo ""
+echo "=== End of Iteration ==="
+echo ""
+
+# Summarize this iteration
+COMPLETED_THIS_ITER=$(bd list --status closed --json 2>/dev/null | jq '. | length')
+FAILED_THIS_ITER=$(bd list --label failed --json 2>/dev/null | jq '. | length' || echo "0")
+READY_REMAINING=$(bd ready --json 2>/dev/null | jq '. | length')
+
+echo "Iteration summary:"
+echo "  Completed: $COMPLETED_THIS_ITER total"
+echo "  Failed: $FAILED_THIS_ITER total"
+echo "  Remaining: $READY_REMAINING ready"
+echo ""
+
+# Learnings already persisted to improvements.json in STEP 3
+echo "Learnings persisted to improvements.json"
+echo ""
+```
+
+**NOW CLEAR CONTEXT**: You (Claude orchestrator) MUST use `/compact` or equivalent to clear your context before starting the next iteration. This prevents context exhaustion.
+
+**Why this matters:**
+- Each iteration accumulates agent outputs, validation results, error logs
+- Without clearing, context fills up and orchestrator dies mid-loop
+- Learnings are persisted to `improvements.json`, so nothing is lost
+- bd/bv state is external, so nothing is lost
+
+**After clearing context, loop back to STEP 1.**
 
 ---
 
@@ -559,6 +592,12 @@ Loop continuously:
 
 **STEP 6: Sleep**
 - Wait heartbeat_interval
+
+**STEP 7: Clear Context**
+- Summarize iteration (completed, failed, remaining)
+- Learnings already persisted to improvements.json
+- **Use `/compact` to clear context**
+- Loop back to STEP 1
 
 ### 3. Key Principles
 
