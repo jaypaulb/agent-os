@@ -329,27 +329,120 @@ Proceeding to task creation...
 
 ## PHASE 4: Create Implementation Tasks
 
-After ALL phases have been shaped, written, and plan-product has been updated, create the implementation task breakdown:
+After ALL phases have been shaped, written, and plan-product has been updated, create the implementation task breakdown for all specs.
 
-{{@agent-os/commands/create-tasks/create-tasks.md}}
+### Step 1: Discover All Specs
 
-{{IF tracking_mode_beads}}
-This will automatically create Beads issues using the workflow defined in:
-{{workflows/implementation/create-beads-issues.md}}
+First, find all specs that were created:
 
-The result will be:
-- `.beads/` directory initialized in each spec folder
-- Epic, organism, molecule, and atom issues created with proper hierarchy
-- Blocking dependencies set (atoms block molecules, molecules block organisms)
-- Ready work queue populated (`bd ready` shows unblocked atoms)
+```bash
+# Find all spec folders
+SPEC_FOLDERS=$(find agent-os/specs -mindepth 1 -maxdepth 1 -type d)
 
-**Note**: Since you've iterated through multiple phases, you may need to run create-tasks for EACH phase's spec folder, or create a combined implementation plan that sequences phases properly.
+echo "Found specs:"
+for spec_folder in $SPEC_FOLDERS; do
+    spec_name=$(basename "$spec_folder")
+    echo "  • $spec_name"
+done
+```
 
-For a multi-phase implementation:
-1. Create Beads issues for Phase 1
-2. Set Phase 2's epic to be blocked by Phase 1's integration issue
-3. Repeat for each subsequent phase to ensure sequential execution
-{{ENDIF tracking_mode_beads}}
+### Step 2: Check and Create Tasks for Each Spec
+
+For each spec, check if tasks/beads already exist, and create them if missing:
+
+**If tracking_mode_beads is enabled:**
+
+Check if `.beads/` exists at project root. If not, create Beads issues for all specs:
+
+```bash
+# Navigate to project root
+cd /path/to/project
+
+if [ ! -d ".beads" ]; then
+    echo "Creating Beads issues for all specs..."
+
+    # Initialize Beads at project root
+    bd init --stealth
+
+    # For each spec, create Beads issues
+    for spec_folder in $SPEC_FOLDERS; do
+        spec_name=$(basename "$spec_folder")
+
+        # Extract phase number from roadmap
+        PHASE_NUM=$(grep -n "$spec_name" agent-os/product/roadmap.md | cut -d: -f1)
+
+        echo ""
+        echo "Creating Beads issues for Phase $PHASE_NUM: $spec_name"
+
+        # Run create-beads-issues workflow for this spec
+        # This will create issues with proper phase labels and dependencies
+        # Follow: agent-os/workflows/implementation/create-beads-issues.md
+
+    done
+
+    echo ""
+    echo "✓ Beads issues created for all $SPEC_COUNT specs"
+else
+    echo "✓ Beads already initialized at project root"
+fi
+```
+
+**If tracking_mode_beads is NOT enabled (fallback to tasks.md):**
+
+For each spec, check if `tasks.md` exists, and create it if missing:
+
+```bash
+for spec_folder in $SPEC_FOLDERS; do
+    spec_name=$(basename "$spec_folder")
+
+    if [ -f "$spec_folder/tasks.md" ]; then
+        echo "✓ $spec_name: tasks.md already exists"
+    else
+        echo "Creating tasks.md for $spec_name..."
+
+        # Delegate to tasks-list-creator subagent
+        # Provide it with:
+        # - $spec_folder/spec.md
+        # - $spec_folder/planning/requirements.md
+        # - $spec_folder/planning/visuals/
+
+        echo "✓ Created tasks.md for $spec_name"
+    fi
+done
+
+echo ""
+echo "✓ All specs have tasks.md files"
+```
+
+### Step 3: Set Phase Dependencies (Beads mode only)
+
+**If tracking_mode_beads is enabled:**
+
+After all Beads issues are created, set phase dependencies:
+
+```bash
+# Already at project root
+
+# For each phase after Phase 1, block on previous phase's integration
+for phase_num in $(seq 2 $PHASE_COUNT); do
+    prev_phase=$((phase_num - 1))
+
+    # Find this phase's epic
+    CURR_EPIC=$(bd list --label "phase-$phase_num" --type epic --format json | jq -r '.[0].id')
+
+    # Find previous phase's integration issue
+    PREV_INTEGRATION=$(bd list --label "phase-$prev_phase" --format json | \
+        jq -r '.[] | select(.title | contains("[Integration]")) | .id')
+
+    # Set dependency
+    bd dep add "$CURR_EPIC" "$PREV_INTEGRATION" --type blocks
+
+    echo "✓ Phase $phase_num blocks on Phase $prev_phase integration"
+done
+
+echo ""
+echo "✓ Phase dependencies configured"
+```
 
 ---
 

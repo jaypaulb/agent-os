@@ -17,53 +17,73 @@ This command:
 
 ## PHASE 1: Verify Beads Issues Exist
 
-First, determine which spec we're building. If not already known, ask the user:
-
-```
-Which spec should I build?
-
-Please provide the spec name (e.g., "user-authentication") or the full path to the spec folder.
-
-Available specs:
-[list directories in agent-os/specs/]
-```
-
-Once you know the spec, verify that Beads is initialized:
+Verify that Beads is initialized at project root:
 
 ```bash
-cd agent-os/specs/[this-spec]/
+# Navigate to project root
+cd /path/to/project
 
-# Check for .beads/ directory
+# Check for .beads/ directory at project root
 if [ -d ".beads" ]; then
-  echo "✓ Beads initialized"
+  echo "✓ Beads initialized at project root"
 else
-  echo "✗ Beads not initialized. Run /create-tasks first."
+  echo "✗ Beads not initialized. Run /autonomous-plan or /create-tasks first."
   exit 1
 fi
 
 # Check for issues
-ISSUE_COUNT=$(bd list --json | jq '. | length')
-echo "Found $ISSUE_COUNT Beads issues"
+ISSUE_COUNT=$(bd list --format json | jq '. | length')
+echo "Found $ISSUE_COUNT Beads issues across all phases"
 
 if [ "$ISSUE_COUNT" -eq 0 ]; then
-  echo "✗ No Beads issues found. Run /create-tasks first."
+  echo "✗ No Beads issues found. Run /autonomous-plan or /create-tasks first."
   exit 1
 fi
 
-# Show ready work
+# Show all phases
 echo ""
-echo "Ready to implement:"
-bd ready --limit 5
+echo "Phases in this project:"
+bd list --type epic --format json | jq -r '.[] | "  • \(.title) (\(.id))"'
+
+# Show ready work across all phases
+echo ""
+echo "Ready to implement (across all phases):"
+bd ready --limit 10
+```
+
+**Optional: Filter by spec/phase**
+
+If you want to work on a specific spec or phase only:
+
+```bash
+# Ask user if they want to filter
+echo ""
+echo "Build all phases, or filter by specific phase?"
+echo "  1. Build all (parallel work across all phases)"
+echo "  2. Filter by specific phase"
+read -p "Choice [1/2]: " filter_choice
+
+if [ "$filter_choice" = "2" ]; then
+    # List available phases
+    echo "Available phases:"
+    bd list --type epic --format json | jq -r '.[] | "  \(.labels[] | select(startswith(\"phase-\"))): \(.title)"'
+
+    read -p "Enter phase label (e.g., phase-1): " phase_label
+
+    # Show ready work for this phase only
+    echo "Ready work for $phase_label:"
+    bd ready --label "$phase_label" --limit 5
+fi
 ```
 
 If no issues exist or `.beads/` directory is missing, STOP and output:
 
 ```
-Error: Beads issues not found.
+Error: Beads issues not found at project root.
 
 Please run one of the following first:
 - /autonomous-plan (full planning loop + task creation)
-- /create-tasks (task creation only, requires existing spec)
+- /create-tasks (task creation only, requires existing specs)
 
 Then run /auto-build again.
 ```
@@ -75,10 +95,10 @@ Then run /auto-build again.
 Before starting the build, check what changed since the last build and verify no circular dependencies exist:
 
 ```bash
-cd agent-os/specs/[this-spec]/
+# Already at project root
 
 # Source BV helpers
-source ../../../workflows/implementation/bv-helpers.md
+source agent-os/profiles/default/workflows/implementation/bv-helpers.md
 
 if bv_available; then
     echo ""
@@ -198,26 +218,30 @@ fi
 
 The harness expects to work in a project directory with `.beads_project.json` marker file.
 
-Determine the project root (typically the spec folder for single-spec builds, or workspace root for multi-spec):
+Use project root as the working directory:
 
 ```bash
-# For single-spec build, use spec folder as project root
-PROJECT_ROOT="$(pwd)"  # Should be agent-os/specs/[this-spec]/
+# Already at project root
+PROJECT_ROOT="$(pwd)"
 
 # Create .beads_project.json marker if it doesn't exist
 if [ ! -f ".beads_project.json" ]; then
   echo "Creating .beads_project.json marker..."
 
   # Get project metadata from Beads
-  EPIC_ID=$(bd list --json | jq -r '.[] | select(.type=="epic") | .id' | head -1)
-  EPIC_TITLE=$(bd show "$EPIC_ID" | grep "title:" | cut -d: -f2- | xargs)
+  # Find all phase epics
+  EPIC_COUNT=$(bd list --type epic --format json | jq '. | length')
+  FIRST_EPIC_ID=$(bd list --type epic --format json | jq -r '.[0].id')
+  PROJECT_NAME=$(basename "$(pwd)")
 
   cat > .beads_project.json <<EOF
 {
-  "project_name": "$EPIC_TITLE",
-  "epic_id": "$EPIC_ID",
+  "project_name": "$PROJECT_NAME",
+  "phase_count": $EPIC_COUNT,
+  "first_epic_id": "$FIRST_EPIC_ID",
   "initialized_at": "$(date -Iseconds)",
-  "tracking_mode": "beads"
+  "tracking_mode": "beads",
+  "multi_phase": true
 }
 EOF
 
