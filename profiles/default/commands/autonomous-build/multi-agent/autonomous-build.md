@@ -1,419 +1,353 @@
-# Autonomous Build: Native Claude Code Orchestrator
+# Autonomous Build: Native Orchestrator
 
-You are the autonomous build orchestrator running continuous implementation sessions using native agent-os workflows.
+You are running the autonomous build orchestrator. Your job is to coordinate continuous implementation sessions by spawning implementer agents until all work is complete.
 
-This command:
-1. Runs cross-phase regression tests when phases complete
-2. Displays BV performance metrics between sessions
-3. Spawns implementer agents via Task tool for each iteration
-4. Analyzes session outcomes
-5. Auto-continues until all work is complete or user interrupts
+## Your Responsibilities
 
-**Prerequisites**:
-- Beads issues must be created (run `/autonomous-plan` or `/create-tasks` first)
-- Project at root directory where `.beads/` exists
-- BV available for graph intelligence (optional but recommended)
+1. Run cross-phase regression tests when phases complete (spawn regression-verifier agents)
+2. Display BV performance metrics between sessions
+3. Spawn implementer agents for each session via Task tool
+4. Analyze session outcomes
+5. Auto-continue until work complete or user interrupts
+
+**Mode**: Fully autonomous - you will loop continuously until all work is done or user stops you.
 
 ---
 
-## PHASE 1: Initialization and Verification
+## INITIALIZATION
 
-Verify Beads is ready and work exists:
+First, verify the project is ready:
 
 ```bash
 # Verify we're at project root with Beads
 if [ ! -d ".beads" ]; then
   echo "❌ No .beads/ directory found at project root"
-  echo "   Please run from project root after creating issues"
-  echo ""
-  echo "Run one of these first:"
-  echo "  /autonomous-plan  - Create specs + tasks"
-  echo "  /create-tasks     - Create tasks for existing specs"
   exit 1
 fi
 
-echo "✓ Beads initialized at project root"
-
 # Check for issues
 ISSUE_COUNT=$(bd list --format json 2>/dev/null | jq '. | length' || echo "0")
-echo "Found $ISSUE_COUNT Beads issues"
-
 if [ "$ISSUE_COUNT" -eq 0 ]; then
-  echo ""
   echo "❌ No Beads issues found"
-  echo "   Run /autonomous-plan or /create-tasks first"
+  echo "Run /autonomous-plan or /create-tasks first"
   exit 1
 fi
 
 # Initialize session tracking
+mkdir -p .beads 2>/dev/null || true
 echo "0" > .beads/iteration-count 2>/dev/null || true
 touch .beads/last-checked-phases 2>/dev/null || true
 
-# Source BV helpers if available
-if [ -f "agent-os/profiles/default/workflows/implementation/bv-helpers.md" ]; then
-  source agent-os/profiles/default/workflows/implementation/bv-helpers.md
+echo "✓ Autonomous Build Ready"
+echo "  Issues: $ISSUE_COUNT"
+echo "  Mode: Fully autonomous"
+echo ""
+echo "Starting continuous build loop..."
+echo "Say 'stop' or 'pause' anytime to interrupt"
+```
+
+---
+
+## MAIN LOOP
+
+**You will now loop through sessions continuously.** After each session completes, automatically continue to the next session after 3 seconds. Loop until all work is complete or user interrupts.
+
+For each iteration:
+
+### STEP 1: Check Session Number
+
+```bash
+ITERATION=$(($(cat .beads/iteration-count 2>/dev/null || echo 0) + 1))
+echo "$ITERATION" > .beads/iteration-count
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  SESSION $ITERATION"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+```
+
+### STEP 2: Cross-Phase Regression Testing
+
+Check if any phase epic just completed. If so, spawn regression-verifier agents to test random issues from each completed phase.
+
+```bash
+# Check for newly completed phases
+CURRENT_PHASES=$(bd list --type epic --status closed --format json 2>/dev/null | jq -r '.[].id' | sort || echo "")
+LAST_CHECKED=$(cat .beads/last-checked-phases 2>/dev/null || echo "")
+NEW_PHASES=$(comm -13 <(echo "$LAST_CHECKED") <(echo "$CURRENT_PHASES") 2>/dev/null || echo "")
+
+if [ -n "$NEW_PHASES" ] && [ "$NEW_PHASES" != "" ]; then
+  echo "=== Cross-Phase Regression Testing ==="
+  echo "🎉 Phase(s) completed! Running regression tests..."
+  echo ""
+fi
+```
+
+**If new phases were completed**, for each completed phase in `$CURRENT_PHASES`:
+
+1. Get phase label and closed issues:
+   ```bash
+   PHASE_ID="[phase-epic-id]"
+   PHASE_LABEL=$(bd show "$PHASE_ID" --format json 2>/dev/null | jq -r '.labels[]' | grep "^phase-" | head -1)
+   CLOSED_IN_PHASE=$(bd list --status closed --label "$PHASE_LABEL" --format json 2>/dev/null | jq -r '.[].id')
+   TEST_ISSUE=$(echo "$CLOSED_IN_PHASE" | shuf -n 1)
+   ```
+
+2. **Spawn regression-verifier agent** via Task tool:
+   ```
+   Use Task tool with:
+   - subagent_type: "Explore" (for now, until regression-verifier is registered)
+   - description: "Verify issue $TEST_ISSUE"
+   - prompt: "You are the regression-verifier agent. Verify that issue $TEST_ISSUE still works correctly.
+
+   Follow the workflow at:
+   {{@agent-os/workflows/implementation/verification/regression-verification.md}}
+
+   Test this specific issue: $TEST_ISSUE
+   Project root: $(pwd)
+
+   Report PASS or FAIL at the end."
+   ```
+
+3. **Check result**: If agent reports FAIL/regression:
+   ```bash
+   bd update "$TEST_ISSUE" --status open --note "Regression detected during autonomous build"
+
+   read -p "Regression detected. Continue build? [y/N]: " continue_build
+   if [[ ! "$continue_build" =~ ^[Yy]$ ]]; then
+     exit 1
+   fi
+   ```
+
+4. Update tracking:
+   ```bash
+   echo "$CURRENT_PHASES" > .beads/last-checked-phases
+   ```
+
+### STEP 3: Performance Analysis (BV Metrics)
+
+Display graph intelligence if BV is available:
+
+```bash
+echo "=== Performance Analysis ==="
+echo ""
+
+if command -v bv &> /dev/null; then
+  INSIGHTS=$(bv --robot-insights --format json 2>/dev/null || echo "{}")
+
+  # Show bottlenecks
+  echo "$INSIGHTS" | jq -r 'if .bottlenecks | length > 0 then "Bottlenecks:", (.bottlenecks[:3][] | "  • \(.id): \(.title) (betweenness: \(.value))") else "" end'
+
+  # Show keystones
+  echo "$INSIGHTS" | jq -r 'if .keystones | length > 0 then "", "Keystones:", (.keystones[:3][] | "  • \(.id): \(.title) (path length: \(.value))") else "" end'
+
+  # Check cycles
+  CYCLE_COUNT=$(echo "$INSIGHTS" | jq '.cycles | length' 2>/dev/null || echo "0")
+  if [[ "$CYCLE_COUNT" -gt 0 ]]; then
+    echo ""
+    echo "⚠️  WARNING: $CYCLE_COUNT circular dependencies detected"
+  fi
+else
+  echo "BV not available - skipping graph analysis"
 fi
 
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Autonomous Build Ready"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+```
+
+### STEP 4: Check Ready Work
+
+Before spawning implementer, verify work exists:
+
+```bash
+READY_COUNT=$(bd ready --format json 2>/dev/null | jq '. | length' || echo "0")
+echo "Ready work: $READY_COUNT issues"
+
+if [[ "$READY_COUNT" -eq 0 ]]; then
+  OPEN_COUNT=$(bd list --status todo --format json 2>/dev/null | jq '. | length' || echo "0")
+
+  if [[ "$OPEN_COUNT" -eq 0 ]]; then
+    echo ""
+    echo "🎉 ALL ISSUES COMPLETE!"
+    TOTAL=$(bd list --format json 2>/dev/null | jq '. | length' || echo "0")
+    CLOSED=$(bd list --status closed --format json 2>/dev/null | jq '. | length' || echo "0")
+    echo "  Total: $TOTAL | Completed: $CLOSED | Sessions: $ITERATION"
+    exit 0
+  else
+    echo "⚠️  All remaining issues are blocked"
+    exit 1
+  fi
+fi
+```
+
+### STEP 5: Spawn Implementation Session
+
+Record session start and spawn implementer agent:
+
+```bash
+# Record start for diff tracking
+git rev-parse HEAD > .beads/last-iteration-commit 2>/dev/null
+
+echo "=== Spawning Implementation Agent ==="
 echo ""
-echo "Mode: Fully autonomous"
-echo "Continues: Until all work complete or Ctrl+C"
-echo "Regression testing: Cross-phase (when phase completes)"
+```
+
+**Now spawn implementer agent via Task tool:**
+
+Use Task tool with:
+- **subagent_type**: `"general-purpose"`
+- **description**: `"Implement ready issues (iteration $ITERATION)"`
+- **prompt**:
+
+```
+You are the implementer agent in an autonomous build (session $ITERATION).
+
+Your task: Implement ONE issue from ready work, test it, and close it.
+
+## Process:
+
+1. **Find ready work**:
+   ```bash
+   bd ready --limit 5
+   ```
+
+2. **Select highest-priority issue** (or use BV if available):
+   ```bash
+   # If BV available:
+   bv --robot-plan --format json | jq -r '.tracks[0].items[0].id'
+
+   # Otherwise first ready issue:
+   bd ready --limit 1 --format json | jq -r '.[0].id'
+   ```
+
+3. **Claim the issue**:
+   ```bash
+   bd update <issue-id> --status in_progress
+   ```
+
+4. **Implement following atomic design principles**:
+   - Read issue details: `bd show <issue-id>`
+   - Read spec context (if spec label exists)
+   - Implement the feature
+   - Write tests
+   - Run tests and verify they pass
+
+5. **Follow the implement-tasks workflow**:
+   {{@agent-os/workflows/implementation/implement-tasks.md}}
+
+   **IMPORTANT**: Monitor your context! If approaching limits:
+   - Commit partial work
+   - Update issue with progress note
+   - Return control to orchestrator
+   - (See "Context Management" section in implement-tasks.md)
+
+6. **Close issue when complete**:
+   ```bash
+   bd update <issue-id> --status closed
+   bd comment <issue-id> "Implementation complete. Tests passing."
+   ```
+
+7. **Commit and push**:
+   ```bash
+   git add [modified-files]
+   git commit -m "Implement [feature-name]"
+   git push
+   ```
+
+8. **Write session summary** to META issue:
+   ```bash
+   META_ID=$(cat .beads_project.json | jq -r '.meta_issue_id' 2>/dev/null || echo "")
+   if [ -n "$META_ID" ]; then
+     bd comment "$META_ID" "Session $ITERATION: Completed <issue-id> - [title]"
+   fi
+   ```
+
+9. **Return control**: You're done. Orchestrator will continue.
+
+Project root: $(pwd)
+Target: 1 issue per session (quality over quantity)
+```
+
+**Wait for agent to complete.**
+
+### STEP 6: Session Analysis
+
+After agent returns, analyze what changed:
+
+```bash
 echo ""
-echo "Press Ctrl+C anytime to pause"
+echo "=== Session Analysis ==="
 echo ""
-echo "Starting in 3 seconds..."
+
+START_COMMIT=$(cat .beads/last-iteration-commit 2>/dev/null || echo "HEAD")
+CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "HEAD")
+
+# Check for in-progress issues (early exit)
+IN_PROGRESS_COUNT=$(bd list --status in_progress --format json 2>/dev/null | jq '. | length' || echo "0")
+
+if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
+  echo "⚠️  Detected early session exit (context limits)"
+  echo "In-progress issues:"
+  bd list --status in_progress --format json 2>/dev/null | jq -r '.[] | "  ⏳ \(.id): \(.title)"'
+  echo ""
+  echo "This is normal. Next session will continue."
+  echo ""
+fi
+
+# Show accomplishments
+if command -v bv &> /dev/null && [ "$START_COMMIT" != "$CURRENT_COMMIT" ]; then
+  DIFF=$(bv --robot-diff --diff-since "$START_COMMIT" --format json 2>/dev/null || echo "{}")
+
+  CLOSED=$(echo "$DIFF" | jq '.changes.closed_issues | length' 2>/dev/null || echo "0")
+  NEW=$(echo "$DIFF" | jq '.changes.new_issues | length' 2>/dev/null || echo "0")
+
+  echo "Accomplishments:"
+  echo "  • $CLOSED issues closed"
+  echo "  • $NEW new issues discovered"
+
+  if [[ "$CLOSED" -gt 0 ]]; then
+    echo ""
+    echo "Closed:"
+    echo "$DIFF" | jq -r '.changes.closed_issues[] | "  ✓ \(.id): \(.title)"' 2>/dev/null
+  fi
+fi
+
+echo ""
+```
+
+### STEP 7: Auto-Continue
+
+Wait 3 seconds then loop to next session:
+
+```bash
+echo "=== Continuation ==="
+echo ""
+echo "Continuing to next session in 3 seconds..."
+echo "(Say 'stop' or 'pause' to interrupt)"
+echo ""
 sleep 3
 ```
 
----
-
-## PHASE 2: Main Orchestration Loop
-
-Run continuous sessions until work complete:
-
-```bash
-while true; do
-  ITERATION=$(($(cat .beads/iteration-count 2>/dev/null || echo 0) + 1))
-  echo "$ITERATION" > .beads/iteration-count
-
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  SESSION $ITERATION"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-
-  # ==================================================
-  # STEP 1: Cross-Phase Regression Testing
-  # ==================================================
-
-  echo "=== Step 1: Regression Testing ==="
-  echo ""
-
-  # Check if any phase epic just completed
-  CURRENT_PHASES=$(bd list --type epic --status closed --format json 2>/dev/null | jq -r '.[].id' | sort || echo "")
-  LAST_CHECKED=$(cat .beads/last-checked-phases 2>/dev/null || echo "")
-
-  # Find newly completed phases
-  NEW_PHASES=$(comm -13 <(echo "$LAST_CHECKED") <(echo "$CURRENT_PHASES") 2>/dev/null || echo "")
-
-  if [ -n "$NEW_PHASES" ] && [ "$NEW_PHASES" != "" ]; then
-    echo "🎉 Phase(s) completed since last check!"
-    echo ""
-    echo "Running cross-phase regression tests..."
-    echo ""
-
-    # For each completed phase, test 1 random issue
-    REGRESSION_FOUND=false
-
-    for PHASE_ID in $CURRENT_PHASES; do
-      if [ -z "$PHASE_ID" ]; then
-        continue
-      fi
-
-      PHASE_TITLE=$(bd show "$PHASE_ID" --format json 2>/dev/null | jq -r '.title' || echo "Unknown")
-      echo "Testing Phase: $PHASE_TITLE ($PHASE_ID)"
-
-      # Get all closed issues in this phase
-      PHASE_LABEL=$(bd show "$PHASE_ID" --format json 2>/dev/null | jq -r '.labels[]' | grep "^phase-" | head -1 || echo "")
-
-      if [ -z "$PHASE_LABEL" ]; then
-        echo "  ⚠️  No phase label found, skipping"
-        continue
-      fi
-
-      CLOSED_IN_PHASE=$(bd list --status closed --label "$PHASE_LABEL" --format json 2>/dev/null | jq -r '.[].id' || echo "")
-
-      if [ -z "$CLOSED_IN_PHASE" ]; then
-        echo "  No closed issues yet in this phase"
-        continue
-      fi
-
-      # Randomly select 1 issue
-      TEST_ISSUE=$(echo "$CLOSED_IN_PHASE" | shuf -n 1)
-      TEST_TITLE=$(bd show "$TEST_ISSUE" --format json 2>/dev/null | jq -r '.title' || echo "Unknown")
-
-      echo "  Testing: $TEST_ISSUE - $TEST_TITLE"
-
-      # TODO: Spawn regression-verifier agent via Task tool
-      # For now, we'll skip actual verification and just log
-      echo "  ⚠️  Regression verification not yet implemented (coming soon)"
-      echo "  Would test: $TEST_ISSUE via Playwright"
-
-      # Placeholder for regression detection
-      # if regression detected:
-      #   bd update "$TEST_ISSUE" --status open --note "Regression detected during autonomous build"
-      #   REGRESSION_FOUND=true
-      #   echo "  ❌ REGRESSION DETECTED"
-
-      echo "  ✓ Verification passed (placeholder)"
-      echo ""
-    done
-
-    # Update tracking
-    echo "$CURRENT_PHASES" > .beads/last-checked-phases
-
-    if [ "$REGRESSION_FOUND" = true ]; then
-      echo ""
-      echo "❌ Regressions detected in cross-phase testing"
-      read -p "Continue build despite regressions? [y/N]: " continue_build
-      if [[ ! "$continue_build" =~ ^[Yy]$ ]]; then
-        echo "Build paused. Fix regressions first."
-        exit 1
-      fi
-    fi
-  else
-    echo "No new phases completed. Skipping regression tests."
-  fi
-
-  echo ""
-
-  # ==================================================
-  # STEP 2: Performance Analysis (BV Metrics)
-  # ==================================================
-
-  echo "=== Step 2: Performance Analysis ==="
-  echo ""
-
-  if command -v bv &> /dev/null 2>&1; then
-    INSIGHTS=$(bv --robot-insights --format json 2>/dev/null || echo "{}")
-
-    # Bottlenecks
-    BOTTLENECK_COUNT=$(echo "$INSIGHTS" | jq '.bottlenecks | length' 2>/dev/null || echo "0")
-    if [[ "$BOTTLENECK_COUNT" -gt 0 ]]; then
-      echo "Bottlenecks (bridge multiple work streams):"
-      echo "$INSIGHTS" | jq -r '.bottlenecks[:3][] | "  • \(.id): \(.title) (betweenness: \(.value))"' 2>/dev/null || echo "  None"
-      echo ""
-    fi
-
-    # Keystones
-    KEYSTONE_COUNT=$(echo "$INSIGHTS" | jq '.keystones | length' 2>/dev/null || echo "0")
-    if [[ "$KEYSTONE_COUNT" -gt 0 ]]; then
-      echo "Keystones (critical path):"
-      echo "$INSIGHTS" | jq -r '.keystones[:3][] | "  • \(.id): \(.title) (path length: \(.value))"' 2>/dev/null || echo "  None"
-      echo ""
-    fi
-
-    # Influencers
-    INFLUENCER_COUNT=$(echo "$INSIGHTS" | jq '.influencers | length' 2>/dev/null || echo "0")
-    if [[ "$INFLUENCER_COUNT" -gt 0 ]]; then
-      echo "Influencers (foundational work):"
-      echo "$INSIGHTS" | jq -r '.influencers[:3][] | "  • \(.id): \(.title) (eigenvector: \(.value))"' 2>/dev/null || echo "  None"
-      echo ""
-    fi
-
-    # Check for cycles
-    CYCLES=$(echo "$INSIGHTS" | jq '.cycles' 2>/dev/null || echo "[]")
-    CYCLE_COUNT=$(echo "$CYCLES" | jq 'length' 2>/dev/null || echo "0")
-    if [[ "$CYCLE_COUNT" -gt 0 ]]; then
-      echo "⚠️  WARNING: $CYCLE_COUNT circular dependencies detected"
-      echo "$CYCLES" | jq -r '.[] | "  Cycle: " + (. | join(" → "))' 2>/dev/null || true
-      echo ""
-    fi
-  else
-    echo "BV not available - skipping graph analysis"
-    echo "(Install BV for bottleneck/keystone/influencer insights)"
-  fi
-
-  echo ""
-
-  # ==================================================
-  # STEP 3: Spawn Implementation Session
-  # ==================================================
-
-  echo "=== Step 3: Spawning Implementation Agent ==="
-  echo ""
-
-  # Record session start for diff tracking
-  git rev-parse HEAD > .beads/last-iteration-commit 2>/dev/null || echo "HEAD" > .beads/last-iteration-commit
-
-  # Check ready work count
-  READY_COUNT=$(bd ready --format json 2>/dev/null | jq '. | length' || echo "0")
-  echo "Ready work: $READY_COUNT issues"
-
-  if [[ "$READY_COUNT" -eq 0 ]]; then
-    echo ""
-    echo "No ready work found."
-
-    # Check if all done or all blocked
-    OPEN_COUNT=$(bd list --status todo --format json 2>/dev/null | jq '. | length' || echo "0")
-
-    if [[ "$OPEN_COUNT" -eq 0 ]]; then
-      echo ""
-      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      echo "  🎉 ALL ISSUES COMPLETE!"
-      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      echo ""
-
-      TOTAL=$(bd list --format json 2>/dev/null | jq '. | length' || echo "0")
-      CLOSED=$(bd list --status closed --format json 2>/dev/null | jq '. | length' || echo "0")
-
-      echo "Final Stats:"
-      echo "  Total issues: $TOTAL"
-      echo "  Completed: $CLOSED"
-      echo "  Sessions: $ITERATION"
-      echo ""
-      echo "Autonomous build complete!"
-      exit 0
-    else
-      echo ""
-      echo "⚠️  All remaining issues are blocked"
-      echo ""
-      echo "Blocked issues:"
-      bd list --status blocked --format json 2>/dev/null | jq -r '.[] | "  • \(.id): \(.title)"' || echo "  (none)"
-      echo ""
-      echo "Manual intervention needed. Exiting autonomous build."
-      exit 1
-    fi
-  fi
-
-  echo ""
-  echo "Spawning implementer agent..."
-  echo ""
-
-  # TODO: Spawn implementer agent via Task tool
-  # This will be implemented using Task tool to spawn the implementer agent
-  # The agent will:
-  # 1. Follow implement-with-beads.md workflow
-  # 2. Query bd ready for work
-  # 3. Select highest-impact issue
-  # 4. Implement, test, close
-  # 5. Return to orchestrator
-
-  echo "⚠️  Agent spawning not yet implemented (coming soon)"
-  echo "Would spawn: implementer agent with iteration=$ITERATION"
-  echo ""
-
-  # Placeholder: Simulate session completion
-  echo "Simulating session completion..."
-  sleep 2
-
-  # ==================================================
-  # STEP 4: Session Analysis
-  # ==================================================
-
-  echo ""
-  echo "=== Step 4: Session Analysis ==="
-  echo ""
-
-  START_COMMIT=$(cat .beads/last-iteration-commit 2>/dev/null || echo "HEAD")
-  CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "HEAD")
-
-  # Check for in-progress issues (indicates early exit due to context limits)
-  IN_PROGRESS_COUNT=$(bd list --status in_progress --format json 2>/dev/null | jq '. | length' || echo "0")
-
-  if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
-    echo "⚠️  Detected early session exit (context limits)"
-    echo ""
-    echo "In-progress issues:"
-    bd list --status in_progress --format json 2>/dev/null | jq -r '.[] | "  ⏳ \(.id): \(.title)"' || echo "  (none)"
-    echo ""
-    echo "Agent ended session before completing work."
-    echo "This is normal for complex implementations."
-    echo "Next session will continue from current state."
-    echo ""
-  fi
-
-  if command -v bv &> /dev/null && [ "$START_COMMIT" != "$CURRENT_COMMIT" ]; then
-    DIFF=$(bv --robot-diff --diff-since "$START_COMMIT" --format json 2>/dev/null || echo "{}")
-
-    CLOSED=$(echo "$DIFF" | jq '.changes.closed_issues | length' 2>/dev/null || echo "0")
-    NEW=$(echo "$DIFF" | jq '.changes.new_issues | length' 2>/dev/null || echo "0")
-    MODIFIED=$(echo "$DIFF" | jq '.changes.modified_issues | length' 2>/dev/null || echo "0")
-
-    echo "Accomplishments:"
-    echo "  • $CLOSED issues closed"
-    echo "  • $NEW new issues discovered"
-    echo "  • $MODIFIED issues updated"
-    if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
-      echo "  • $IN_PROGRESS_COUNT issues in progress (partial)"
-    fi
-    echo ""
-
-    if [[ "$CLOSED" -gt 0 ]]; then
-      echo "Closed:"
-      echo "$DIFF" | jq -r '.changes.closed_issues[] | "  ✓ \(.id): \(.title)"' 2>/dev/null || echo "  (details unavailable)"
-      echo ""
-    fi
-
-    if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
-      echo "Partial work committed. Next session will continue."
-    fi
-  else
-    if [ "$START_COMMIT" = "$CURRENT_COMMIT" ]; then
-      echo "No git changes detected."
-      if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
-        echo "Agent may have run out of context before making changes."
-        echo "Next session will attempt the same work with fresh context."
-      fi
-    else
-      echo "BV unavailable for diff tracking"
-    fi
-  fi
-
-  echo ""
-
-  # ==================================================
-  # STEP 5: Continuation Decision
-  # ==================================================
-
-  echo "=== Step 5: Continuation Decision ==="
-  echo ""
-
-  # Recheck ready work
-  READY_COUNT=$(bd ready --format json 2>/dev/null | jq '. | length' || echo "0")
-  BLOCKED_COUNT=$(bd list --status blocked --format json 2>/dev/null | jq '. | length' || echo "0")
-  OPEN_COUNT=$(bd list --status todo --format json 2>/dev/null | jq '. | length' || echo "0")
-
-  echo "Work Remaining:"
-  echo "  Ready: $READY_COUNT"
-  echo "  Blocked: $BLOCKED_COUNT"
-  echo "  Open: $OPEN_COUNT"
-  echo ""
-
-  if [[ "$READY_COUNT" -eq 0 ]]; then
-    if [[ "$OPEN_COUNT" -eq 0 ]]; then
-      echo "🎉 All issues complete!"
-      exit 0
-    else
-      echo "⚠️  No ready work. All remaining issues blocked."
-      exit 1
-    fi
-  fi
-
-  # Auto-continue
-  echo "Continuing in 3 seconds... (Press Ctrl+C to stop)"
-  sleep 3
-
-done
-```
+**Then loop back to STEP 1** - start next iteration.
 
 ---
 
-## Notes
+## How to Run This
 
-**Current Status**: This orchestrator provides the framework for autonomous builds but requires:
-1. Integration with regression-verifier agent (Task tool spawning)
-2. Integration with implementer agent (Task tool spawning)
-3. Playwright MCP tools configuration for browser testing
+You (Claude) are the orchestrator. When user runs `/autonomous-build`:
 
-**Placeholders**:
-- Regression verification currently logs intention but doesn't spawn agent
-- Implementation session currently simulates without spawning real agent
-- These will be implemented in subsequent phases
+1. Run the INITIALIZATION bash commands
+2. Enter the MAIN LOOP
+3. For each iteration:
+   - Run the bash commands for state checking
+   - Spawn agents via Task tool at the appropriate points
+   - Wait for agents to complete
+   - Analyze results
+   - Auto-continue after 3 seconds
+4. Loop until all work complete or user interrupts
 
-**Usage**:
-```bash
-cd /path/to/project
-/autonomous-build
-```
+**You manage the loop** - after each session, wait 3 seconds and start the next one automatically.
 
-The orchestrator will run until:
-- All issues are complete (exit 0)
-- All issues are blocked (exit 1)
-- User interrupts with Ctrl+C
+**User can interrupt** anytime by saying "stop", "pause", or pressing Ctrl+C in their terminal.
 
-State is preserved in Beads, so you can resume anytime by running `/autonomous-build` again.
+**State is preserved** in Beads, so if interrupted, user can resume by running `/autonomous-build` again.
