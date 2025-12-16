@@ -281,12 +281,50 @@ while [[ "$ACTIVE_COUNT" -lt "$MAX_AGENTS" ]] && [[ "$READY_COUNT" -gt 0 ]]; do
     ')
   fi
 
+  # Check for conflict resolution context
+  CONFLICT_CONTEXT=""
+  CONFLICT_ATTEMPT=$(echo "$ORGANISM_DATA" | jq -r '.conflict_attempt // 0')
+
+  if [ "$CONFLICT_ATTEMPT" -gt 0 ]; then
+    CONFLICT_DETAILS=$(echo "$ORGANISM_DATA" | jq -r '.conflict_details // "No details available"')
+    CONFLICTED_FILES=$(echo "$ORGANISM_DATA" | jq -r '.conflicted_files // "Unknown"')
+
+    CONFLICT_CONTEXT="
+⚠️  CONFLICT RESOLUTION MODE (Attempt $CONFLICT_ATTEMPT)
+
+This organism previously resulted in merge conflicts. You MUST resolve these conflicts as part of your implementation.
+
+**Conflicted files:**
+$CONFLICTED_FILES
+
+**Conflict details:**
+$CONFLICT_DETAILS
+
+**How to resolve:**
+1. Read the conflict diff above carefully
+2. Understand what changes are in conflict
+3. Implement your organism in a way that INCORPORATES BOTH sets of changes
+4. For type/interface conflicts: merge both additions, avoid duplicates
+5. For barrel file conflicts: merge exports in alphabetical order
+6. For config conflicts: carefully merge both configurations
+7. Test thoroughly to ensure both features work together
+
+**Critical:** Your implementation MUST resolve the conflict, not recreate it.
+"
+  fi
+
   echo "🚀 Spawning agent in slot $SLOT: $ORGANISM_ID ($ORGANISM_TITLE)"
+
+  if [ "$CONFLICT_ATTEMPT" -gt 0 ]; then
+    echo "   ⚠️  Conflict resolution mode (attempt $CONFLICT_ATTEMPT)"
+  fi
 
   # Spawn agent via Task tool (background=true)
   TASK_PROMPT="You are the implementer agent working on organism $ORGANISM_ID.
 
 $LEARNING_CONTEXT
+
+$CONFLICT_CONTEXT
 
 Your task: Implement this organism, test it, and close it.
 
@@ -479,29 +517,158 @@ else
       VALIDATION_PASSED=true
       ;;
     3)
-      # Merge conflict detected
+      # Merge conflict detected - 3-tier resolution strategy
       echo "⚠️  Merge conflict detected"
       CONFLICT_DETAILS=$(cat /tmp/conflict-details.txt 2>/dev/null || echo "No details available")
-      echo "$CONFLICT_DETAILS"
 
-      # Move to blocked queue (Phase 4 will handle resolution)
       ORGANISM_DATA=$(jq ".in_progress[] | select(.id == \"$ORGANISM_ID\")" .beads/autonomous-state/work-queue.json)
-      BLOCKED_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
-        blocked_by: \"merge-conflict\",
-        reason: \"Merge conflict with main branch\",
-        blocked_at: \"$(date -Iseconds)\"
-      }")
+      CONFLICT_ATTEMPT=$(echo "$ORGANISM_DATA" | jq -r '.conflict_attempt // 0')
 
-      jq "
-        .blocked += [$BLOCKED_DATA] |
-        .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
-      " .beads/autonomous-state/work-queue.json > /tmp/wq.json
-      mv /tmp/wq.json .beads/autonomous-state/work-queue.json
+      case $CONFLICT_ATTEMPT in
+        0)
+          # ATTEMPT 1: Conflict-aware retry
+          echo "📝 Conflict Resolution Attempt 1: Retry with conflict awareness"
+          echo ""
+          echo "Feeding conflict diff to agent for resolution..."
+
+          # Extract conflicted files for learning
+          CONFLICTED_FILES=$(echo "$CONFLICT_DETAILS" | grep -oP '===\s+\K[^\s]+' || echo "")
+
+          # Add conflict info to organism for retry
+          RETRY_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
+            conflict_attempt: 1,
+            conflict_details: \"$(echo "$CONFLICT_DETAILS" | jq -sR .)\",
+            conflicted_files: \"$(echo "$CONFLICTED_FILES" | jq -sR .)\",
+            last_conflict_at: \"$(date -Iseconds)\"
+          } | del(.claimed_at, .slot, .task_id)")
+
+          jq "
+            .ready += [$RETRY_DATA] |
+            .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
+          " .beads/autonomous-state/work-queue.json > /tmp/wq.json
+          mv /tmp/wq.json .beads/autonomous-state/work-queue.json
+
+          echo "✓ Organism queued for conflict-aware retry"
+          echo "Next agent will receive conflict diff and resolution hints"
+          ;;
+
+        1)
+          # ATTEMPT 2: Serialize conflicting organisms
+          echo "📝 Conflict Resolution Attempt 2: Serialize conflicting work"
+          echo ""
+
+          # Identify which organism(s) caused the conflict
+          echo "Analyzing conflict to identify conflicting organism..."
+
+          # Check if any active agents are working on organisms that touch same files
+          CONFLICTED_FILES=$(echo "$CONFLICT_DETAILS" | grep -oP '===\s+\K[^\s]+' || echo "")
+          BLOCKING_ORGANISM=""
+
+          for ACTIVE_AGENT in $(jq -c '.active[]' .beads/autonomous-state/agent-pool.json 2>/dev/null || echo ""); do
+            ACTIVE_ORGANISM=$(echo "$ACTIVE_AGENT" | jq -r '.organism_id')
+            ACTIVE_FILES=$(jq ".in_progress[] | select(.id == \"$ACTIVE_ORGANISM\") | .predicted_files[]? // empty" .beads/autonomous-state/work-queue.json || echo "")
+
+            # Check for overlap
+            for CONF_FILE in $CONFLICTED_FILES; do
+              if echo "$ACTIVE_FILES" | grep -q "$CONF_FILE"; then
+                BLOCKING_ORGANISM="$ACTIVE_ORGANISM"
+                break 2
+              fi
+            done
+          done
+
+          if [ -n "$BLOCKING_ORGANISM" ]; then
+            echo "Found conflicting organism: $BLOCKING_ORGANISM (currently active)"
+            echo "Blocking $ORGANISM_ID until $BLOCKING_ORGANISM completes"
+
+            # Move to blocked queue with dependency
+            BLOCKED_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
+              blocked_by: \"$BLOCKING_ORGANISM\",
+              reason: \"Serialized due to file conflict\",
+              blocked_at: \"$(date -Iseconds)\",
+              conflict_attempt: 2,
+              conflict_details: \"$(echo "$CONFLICT_DETAILS" | jq -sR .)\"
+            } | del(.claimed_at, .slot, .task_id)")
+
+            jq "
+              .blocked += [$BLOCKED_DATA] |
+              .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
+            " .beads/autonomous-state/work-queue.json > /tmp/wq.json
+            mv /tmp/wq.json .beads/autonomous-state/work-queue.json
+
+            echo "✓ Organism blocked until $BLOCKING_ORGANISM completes"
+          else
+            # No active conflicting organism - conflict is with already committed work
+            echo "Conflict is with committed work on main branch"
+            echo "Escalating to manual review (Attempt 3)"
+            CONFLICT_ATTEMPT=2  # Force escalation
+          fi
+          ;;
+
+        *)
+          # ATTEMPT 3: Manual review escalation
+          echo "📝 Conflict Resolution Attempt 3: Manual review required"
+          echo ""
+          echo "Creating analysis issue for manual resolution..."
+
+          # Create Beads issue for manual review
+          CONFLICT_ISSUE_TITLE="[CONFLICT] Merge conflict in $ORGANISM_ID"
+          CONFLICT_ISSUE_BODY="Merge conflict detected after multiple resolution attempts.
+
+**Original organism:** $ORGANISM_ID
+
+**Conflict details:**
+\`\`\`
+$CONFLICT_DETAILS
+\`\`\`
+
+**Resolution attempts:**
+1. Conflict-aware retry - Failed
+2. Serialization - Failed or N/A
+3. Manual review - Current step
+
+**Action required:**
+- Review the conflict diff above
+- Manually resolve the conflicting files
+- Implement $ORGANISM_ID with conflict resolution
+- Close this issue when complete
+
+**Assign to:** Jaypaul (manual intervention required)"
+
+          # Create the issue using bd
+          # Note: This is placeholder - actual implementation depends on bd CLI capabilities
+          echo "TODO: Create Beads issue with bd CLI"
+          echo "  Title: $CONFLICT_ISSUE_TITLE"
+          echo "  Assignee: Jaypaul"
+          echo "  Labels: conflict, manual-review, urgent"
+
+          # For now, move to failed queue with manual review flag
+          FAILED_DATA=$(echo "$ORGANISM_DATA" | jq ". + {
+            failed_at: \"$(date -Iseconds)\",
+            failure_reason: \"Merge conflict - manual review required\",
+            conflict_attempt: 3,
+            conflict_details: \"$(echo "$CONFLICT_DETAILS" | jq -sR .)\",
+            requires_manual_review: true,
+            assigned_to: \"Jaypaul\"
+          } | del(.claimed_at, .slot, .task_id)")
+
+          jq "
+            .failed += [$FAILED_DATA] |
+            .in_progress = [.in_progress[] | select(.id != \"$ORGANISM_ID\")]
+          " .beads/autonomous-state/work-queue.json > /tmp/wq.json
+          mv /tmp/wq.json .beads/autonomous-state/work-queue.json
+
+          echo "✓ Organism moved to failed queue"
+          echo "✓ Manual review required - assigned to Jaypaul"
+          echo ""
+          echo "Conflict resolution exhausted all automatic strategies"
+          ;;
+      esac
 
       # Remove lock
       rm -f ".beads/autonomous-state/locks/${ORGANISM_ID}.lock"
 
-      # Free slot (skip to end)
+      # Free slot
       jq "
         .active = [.active[] | select(.slot != $SLOT)] |
         .available_slots += [$SLOT] |
@@ -510,7 +677,6 @@ else
       mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
 
       echo "✓ Slot $SLOT freed"
-      echo "Organism moved to blocked queue (Phase 4 will resolve conflict)"
       echo ""
       continue  # Skip to next agent
       ;;
