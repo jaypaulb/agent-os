@@ -302,6 +302,21 @@ while true; do
   START_COMMIT=$(cat .beads/last-iteration-commit 2>/dev/null || echo "HEAD")
   CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "HEAD")
 
+  # Check for in-progress issues (indicates early exit due to context limits)
+  IN_PROGRESS_COUNT=$(bd list --status in_progress --format json 2>/dev/null | jq '. | length' || echo "0")
+
+  if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
+    echo "⚠️  Detected early session exit (context limits)"
+    echo ""
+    echo "In-progress issues:"
+    bd list --status in_progress --format json 2>/dev/null | jq -r '.[] | "  ⏳ \(.id): \(.title)"' || echo "  (none)"
+    echo ""
+    echo "Agent ended session before completing work."
+    echo "This is normal for complex implementations."
+    echo "Next session will continue from current state."
+    echo ""
+  fi
+
   if command -v bv &> /dev/null && [ "$START_COMMIT" != "$CURRENT_COMMIT" ]; then
     DIFF=$(bv --robot-diff --diff-since "$START_COMMIT" --format json 2>/dev/null || echo "{}")
 
@@ -313,14 +328,30 @@ while true; do
     echo "  • $CLOSED issues closed"
     echo "  • $NEW new issues discovered"
     echo "  • $MODIFIED issues updated"
+    if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
+      echo "  • $IN_PROGRESS_COUNT issues in progress (partial)"
+    fi
     echo ""
 
     if [[ "$CLOSED" -gt 0 ]]; then
       echo "Closed:"
       echo "$DIFF" | jq -r '.changes.closed_issues[] | "  ✓ \(.id): \(.title)"' 2>/dev/null || echo "  (details unavailable)"
+      echo ""
+    fi
+
+    if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
+      echo "Partial work committed. Next session will continue."
     fi
   else
-    echo "No changes detected (or BV unavailable for diff tracking)"
+    if [ "$START_COMMIT" = "$CURRENT_COMMIT" ]; then
+      echo "No git changes detected."
+      if [[ "$IN_PROGRESS_COUNT" -gt 0 ]]; then
+        echo "Agent may have run out of context before making changes."
+        echo "Next session will attempt the same work with fresh context."
+      fi
+    else
+      echo "BV unavailable for diff tracking"
+    fi
   fi
 
   echo ""
