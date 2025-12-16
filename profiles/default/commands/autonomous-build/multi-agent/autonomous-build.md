@@ -8,6 +8,22 @@ This document is **instructions for you (Claude)**. You execute each step using 
 
 **Key principle**: Use `bd` and `bv` commands. Parse their text output directly. No jq.
 
+## ⚠️ CRITICAL: Never Stop Prematurely
+
+**You MUST run continuously until ALL work is done.** The goal is 24 hours of autonomous development.
+
+**ONLY stop when**:
+- `bd ready` shows ZERO ready issues, AND
+- `bd count --status in_progress` shows ZERO, AND
+- All agent slots are empty
+
+**NEVER stop just because**:
+- A batch of agents completed (dispatch more!)
+- You feel like summarizing (keep working!)
+- Context is getting full (use `/compact` and continue!)
+
+After agents complete, ALWAYS check for more ready work and dispatch new agents.
+
 ---
 
 ## Prerequisites
@@ -183,17 +199,25 @@ For each agent that completed (task finished or bd shows closed):
 
 ### STEP 4: Check Completion
 
-1. Run: `bd count --status open` → store as OPEN
+**CRITICAL**: Only stop when there is NO MORE WORK. Check READY work, not just open.
+
+1. Run: `bd ready` → count lines to get READY count
 2. Run: `bd count --status in_progress` → store as IN_PROGRESS
 3. Check agent-pool.txt for active slots → store as ACTIVE
 
-If OPEN=0 AND IN_PROGRESS=0 AND ACTIVE=0:
-- All work complete!
+**ONLY stop if ALL THREE are zero**: READY=0 AND IN_PROGRESS=0 AND ACTIVE=0
+
+If stopping:
 - Run: `bd count` → TOTAL
 - Run: `bd count --status closed` → CLOSED
 - Run: `bd count --label failed` → FAILED
-- Calculate success rate: (CLOSED - FAILED) / TOTAL * 100
-- Tell user final stats and stop loop.
+- Calculate success rate
+- Tell user final stats
+- **Verify truly done**: Run `bd blocked` to show what's blocking remaining work
+
+**If ANY work remains (READY > 0 OR IN_PROGRESS > 0 OR ACTIVE > 0)**:
+- DO NOT STOP
+- Continue to STEP 5 and loop back to STEP 1
 
 ### STEP 5: Display Progress
 
@@ -207,12 +231,20 @@ Tell user current state:
 Wait 10 seconds before next iteration:
 - Run: `sleep 10`
 
-### STEP 7: Context Management
+### STEP 7: Context Management & Continue Loop
 
 Before starting next iteration:
-- Summarize what happened this iteration
-- If you've been running many iterations, use `/compact` to clear context
-- Loop back to STEP 1
+- Briefly note what happened (e.g., "Completed 2, dispatched 3, 5 active")
+- If context is getting full, use `/compact` to clear context
+
+**THEN IMMEDIATELY loop back to STEP 1.**
+
+DO NOT:
+- Stop to write a summary
+- Stop to "wrap up"
+- Stop because agents completed
+
+The loop runs until STEP 4 determines ALL work is done (READY=0, IN_PROGRESS=0, ACTIVE=0).
 
 ---
 
