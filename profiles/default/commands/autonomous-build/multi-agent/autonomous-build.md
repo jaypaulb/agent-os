@@ -89,10 +89,13 @@ fi
 
 # Check ready work using bd
 READY_COUNT=$(bd ready --json 2>/dev/null | jq '. | length' || echo "0")
-echo "Ready to work: $READY_COUNT issues"
+IN_PROGRESS_COUNT=$(bd list --status in_progress --json 2>/dev/null | jq '. | length' || echo "0")
 
-if [ "$READY_COUNT" -eq 0 ]; then
-  # Check if everything is closed
+echo "Ready to work: $READY_COUNT issues"
+echo "In progress: $IN_PROGRESS_COUNT issues"
+
+if [ "$READY_COUNT" -eq 0 ] && [ "$IN_PROGRESS_COUNT" -eq 0 ]; then
+  # No ready AND no in_progress - check if done or blocked
   CLOSED_COUNT=$(bd list --status closed --json 2>/dev/null | jq '. | length' || echo "0")
   if [ "$CLOSED_COUNT" -eq "$ISSUE_COUNT" ]; then
     echo "🎉 All issues are already closed!"
@@ -105,6 +108,8 @@ if [ "$READY_COUNT" -eq 0 ]; then
   echo "$BLOCKED_INFO"
   exit 1
 fi
+
+# Note: If READY_COUNT=0 but IN_PROGRESS_COUNT>0, recovery below will handle it
 
 # Initialize minimal state directory (only for agent pool and learning)
 mkdir -p .beads/autonomous-state/locks
@@ -133,6 +138,50 @@ fi
 
 # Clean any stale locks
 rm -f .beads/autonomous-state/locks/*.lock 2>/dev/null
+
+# ═══════════════════════════════════════════════════════════════════
+# RECOVERY: Check for orphaned in_progress issues
+# ═══════════════════════════════════════════════════════════════════
+# When orchestrator crashes, issues may be left in_progress with no agent.
+# Since we just reset the agent pool (slots empty), any in_progress issue is orphaned.
+
+# Re-query to get full issue data (IN_PROGRESS_COUNT was set earlier)
+IN_PROGRESS_ISSUES=$(bd list --status in_progress --json 2>/dev/null || echo "[]")
+
+if [ "$IN_PROGRESS_COUNT" -gt 0 ]; then
+  echo ""
+  echo "⚠️  RECOVERY: Found $IN_PROGRESS_COUNT orphaned in_progress issues"
+  echo ""
+
+  # List them
+  echo "$IN_PROGRESS_ISSUES" | jq -r '.[] | "  • \(.id): \(.title)"'
+  echo ""
+
+  # Reset each to open status so they can be re-claimed
+  for ISSUE_ID in $(echo "$IN_PROGRESS_ISSUES" | jq -r '.[].id'); do
+    # Check if there's checkpoint progress via comments
+    LAST_CHECKPOINT=$(bd comments "$ISSUE_ID" --json 2>/dev/null | jq -r '[.[] | select(.body | startswith("CHECKPOINT:"))] | .[-1].body // "none"' | head -c 80)
+
+    if [ "$LAST_CHECKPOINT" != "none" ]; then
+      echo "  $ISSUE_ID: checkpoint found - $LAST_CHECKPOINT"
+      bd comment "$ISSUE_ID" "RECOVERY: Orchestrator crashed. Last checkpoint preserved. Re-queuing."
+    else
+      echo "  $ISSUE_ID: no checkpoint - will restart from scratch"
+      bd comment "$ISSUE_ID" "RECOVERY: Orchestrator crashed. No checkpoint found. Re-queuing."
+    fi
+
+    # Reset to open
+    bd update "$ISSUE_ID" --status open 2>/dev/null
+  done
+
+  echo ""
+  echo "✓ Reset $IN_PROGRESS_COUNT orphaned issues to 'open' status"
+  echo ""
+
+  # Update ready count after recovery
+  READY_COUNT=$(bd ready --json 2>/dev/null | jq '. | length' || echo "0")
+  echo "Ready to work (after recovery): $READY_COUNT issues"
+fi
 
 echo "✓ State initialized"
 
@@ -567,7 +616,9 @@ You (Claude) are the orchestrator. When user runs `/autonomous-build`:
 ### 1. INITIALIZATION
 - Verify .beads directory exists
 - Check issue count via `bd list --json | jq '. | length'`
-- Check ready work via `bd ready --json | jq '. | length'`
+- Check ready AND in_progress counts
+- **RECOVERY**: If in_progress issues exist with no active agents → reset to open
+- Clean stale locks
 - Initialize minimal agent-pool.json (slot tracking only)
 
 ### 2. ENTER MAIN LOOP
