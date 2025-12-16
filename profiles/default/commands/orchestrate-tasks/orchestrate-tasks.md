@@ -1,26 +1,54 @@
-# Process for Orchestrating a Spec's Implementation
+# Process for Orchestrating Product Implementation
 
-Now that we have a spec and tasks list ready for implementation, we will proceed with orchestrating implementation of each task group by a dedicated agent using the following MULTI-PHASE process.
+Orchestrate implementation across ALL specs/phases in parallel from project root.
 
-Follow each of these phases and their individual workflows IN SEQUENCE:
+**Run this from PROJECT ROOT, not from a spec folder.**
 
 ## Multi-Phase Process
 
-### FIRST: Get task breakdown for this spec
+### FIRST: Verify Beads and Get All Phases
 
 {{IF tracking_mode_beads}}
-IF you already know which spec we're working on and IF that spec folder has beads initialized (`.beads/` directory exists), then use that and skip to the NEXT phase.
+Check Beads at project root and discover all phases:
 
-IF beads is not initialized for this spec THEN output the following request to the user:
+```bash
+# Ensure we're at project root
+if [ ! -d ".beads" ]; then
+    echo "❌ No .beads/ directory found at project root"
+    echo "   Please run from project root after running /autonomous-plan"
+    exit 1
+fi
 
+echo "✓ Beads initialized at project root"
+
+# Source BV helpers
+source agent-os/profiles/default/workflows/implementation/bv-helpers.md
+
+# Get all phase epics
+if bv_available; then
+    echo "Using BV to discover phases..."
+    PHASE_EPICS=$(bv --filter "type:epic" --format json 2>/dev/null || \
+                  bd list --type epic --format json)
+else
+    echo "Using bd to discover phases..."
+    PHASE_EPICS=$(bd list --type epic --format json)
+fi
+
+PHASE_COUNT=$(echo "$PHASE_EPICS" | jq '. | length')
+
+if [ "$PHASE_COUNT" -eq 0 ]; then
+    echo "❌ No phase epics found"
+    echo "   Run /autonomous-plan to create specs and tasks first"
+    exit 1
+fi
+
+echo "✓ Found $PHASE_COUNT phase(s) to orchestrate"
+echo ""
+echo "Phases:"
+echo "$PHASE_EPICS" | jq -r '.[] | "  • Phase: \(.title) (\(.id))"'
 ```
-Please point me to a spec with beads initialized that you want to orchestrate implementation for.
 
-If you don't have one yet, then run any of these commands first:
-/shape-spec
-/write-spec
-/create-tasks (will create beads issues)
-```
+If phases exist, proceed to analyze parallel execution opportunities.
 
 {{ELSE}}
 IF you already know which spec we're working on and IF that spec folder has a `tasks.md` file, then use that and skip to the NEXT phase.
@@ -37,102 +65,194 @@ If you don't have one yet, then run any of these commands first:
 ```
 {{ENDIF tracking_mode_beads}}
 
-### NEXT: Create orchestration.yml to serve as a roadmap for orchestration
+### NEXT: Analyze Parallel Execution Opportunities
 
-In this spec's folder, create this file: `agent-os/specs/[this-spec]/orchestration.yml`.
+Use BV to identify which work can run in parallel across ALL phases:
 
 {{IF tracking_mode_beads}}
-Populate this file with beads issues organized by atomic design level. Query beads for organism-level issues:
-
 ```bash
-cd agent-os/specs/[this-spec]/
-bd list --tag organism --json | jq -r '.[] | "\(.id): \(.title)"'
+# Already at project root with BV helpers sourced
+
+if bv_available; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Analyzing Parallel Execution Opportunities"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # Get execution plan (BV analyzes ALL phases and finds parallel tracks)
+    EXEC_PLAN=$(get_execution_plan)
+
+    # How many independent tracks can run in parallel?
+    TRACK_COUNT=$(echo "$EXEC_PLAN" | jq -r '.tracks | length')
+
+    echo "BV found $TRACK_COUNT independent work stream(s):"
+    echo ""
+
+    # Display each track
+    echo "$EXEC_PLAN" | jq -r '
+        .tracks[] |
+        "Track \(.track_id): \(.reason)",
+        "  Priority: P\(.priority_range.min)-P\(.priority_range.max)",
+        "  Items: \(.items | length) issues",
+        "  Phases involved: \([.items[].labels[] | select(startswith("phase-"))] | unique | join(", "))",
+        "  Top issues:",
+        (.items[:3] | .[] | "    • \(.id): \(.title) (P\(.priority))"),
+        ""
+    '
+
+    if [ "$TRACK_COUNT" -gt 1 ]; then
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "✨ Parallel Execution Available!"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "You can run $TRACK_COUNT agents in parallel, each working on a different track."
+        echo "This will significantly speed up implementation."
+        echo ""
+    else
+        echo "Note: Only 1 work stream found - sequential execution recommended"
+        echo ""
+    fi
+else
+    echo "⚠️  BV unavailable - parallel analysis not available"
+    echo "   Will proceed with sequential execution"
+    TRACK_COUNT=1
+fi
 ```
 
 ### NEXT: Analyze Priority Recommendations (Optional)
 
-Before assigning agents, check if any issues have priority misalignments:
+Analyze priority across ALL phases:
 
 ```bash
-cd agent-os/specs/[this-spec]/
-
-# Source BV helpers
-source ../../../workflows/implementation/bv-helpers.md
+# Already at project root with BV helpers sourced
 
 if bv_available; then
-    echo "Running priority analysis..."
+    echo ""
+    echo "Running priority analysis across all phases..."
     echo ""
 
-    # Get priority recommendations
+    # Get priority recommendations for entire product
     PRIORITY_RECS=$(get_priority_recommendations)
 
-    # Display summary
-    echo "$PRIORITY_RECS" | jq -r '
-        "=== Priority Analysis ===",
-        "",
-        "Recommendations: \(.summary.recommendations)",
-        "High confidence (>0.8): \(.summary.high_confidence)",
-        "",
-        "Top Priority Misalignments:",
-        (.recommendations[:5] | .[] |
-         "  • \(.issue_id): P\(.current_priority) → P\(.suggested_priority) (\(.confidence*100 | round)% confidence)",
-         "    \(.reasoning)")
-    ' | tee priority-analysis.txt
+    REC_COUNT=$(echo "$PRIORITY_RECS" | jq '.recommendations | length')
 
-    echo ""
-    echo "Review priority-analysis.txt for recommendations."
-    echo "High-confidence suggestions indicate issues that may need priority adjustment."
-    echo ""
+    if [ "$REC_COUNT" -gt 0 ]; then
+        # Display summary
+        echo "$PRIORITY_RECS" | jq -r '
+            "=== Priority Analysis (All Phases) ===",
+            "",
+            "Total Recommendations: \(.summary.recommendations)",
+            "High Confidence (>0.8): \(.summary.high_confidence // 0)",
+            "",
+            "Top Priority Misalignments:",
+            (.recommendations[:10] | .[] |
+             "  • \(.issue_id): P\(.current_priority) → P\(.suggested_priority) (\(.confidence*100 | round)% confidence)",
+             "    Phase: \([.labels[] | select(startswith("phase-"))] | join(", "))",
+             "    \(.reasoning)",
+             "")
+        ' | tee "agent-os/product/priority-analysis.txt"
 
-    # Ask user if they want to apply high-confidence updates
-    read -p "Apply high-confidence priority updates (>0.8 confidence)? [y/N]: " apply_priorities
+        echo ""
+        echo "Review agent-os/product/priority-analysis.txt for full details."
+        echo ""
 
-    if [[ "$apply_priorities" =~ ^[Yy]$ ]]; then
-        # Extract and apply high-confidence increases
-        HIGH_CONF=$(echo "$PRIORITY_RECS" | jq -r '
-            .recommendations[] |
-            select(.confidence > 0.8 and .direction == "increase") |
-            "\(.issue_id) \(.suggested_priority)"
-        ')
+        # Ask user if they want to apply high-confidence updates
+        read -p "Apply high-confidence priority updates (>0.8 confidence)? [y/N]: " apply_priorities
 
-        if [[ -n "$HIGH_CONF" ]]; then
-            echo "Applying priority updates..."
-            while read -r issue_id new_priority; do
-                bd update "$issue_id" --priority "$new_priority" \
-                    --note "Priority updated based on graph analysis"
-                echo "✓ Updated $issue_id to P$new_priority"
-            done <<< "$HIGH_CONF"
-        else
-            echo "No high-confidence priority increases found."
+        if [[ "$apply_priorities" =~ ^[Yy]$ ]]; then
+            # Extract and apply high-confidence increases
+            HIGH_CONF=$(echo "$PRIORITY_RECS" | jq -r '
+                .recommendations[] |
+                select(.confidence > 0.8 and .direction == "increase") |
+                "\(.issue_id) \(.suggested_priority)"
+            ')
+
+            if [[ -n "$HIGH_CONF" ]]; then
+                echo "Applying priority updates across all phases..."
+                while read -r issue_id new_priority; do
+                    bd update "$issue_id" --priority "$new_priority" \
+                        --note "Priority updated based on graph analysis"
+                    echo "✓ Updated $issue_id to P$new_priority"
+                done <<< "$HIGH_CONF"
+
+                echo ""
+                echo "✓ Priority updates applied - re-run execution plan for updated tracks"
+                # Re-fetch execution plan with updated priorities
+                EXEC_PLAN=$(get_execution_plan)
+            else
+                echo "No high-confidence priority increases found."
+            fi
         fi
+    else
+        echo "No priority recommendations across phases."
     fi
 else
     echo "BV unavailable - skipping priority analysis"
 fi
 ```
 
-Continue with agent assignment using potentially updated priorities...
+### NEXT: Create Orchestration Plan
 
-Use this structure for `orchestration.yml`:
+{{IF tracking_mode_beads}}
+Create `agent-os/product/orchestration.yml` with ALL organism issues across ALL phases:
 
-```yaml
+```bash
+# Already at project root
+
+# Get all organism issues across all phases
+if bv_available; then
+    ORGANISMS=$(bv --filter "type:organism" --format json 2>/dev/null || \
+                bd list --type organism --format json)
+else
+    ORGANISMS=$(bd list --type organism --format json)
+fi
+
+# Create orchestration file
+cat > agent-os/product/orchestration.yml <<EOF
+# Multi-Phase Orchestration Plan
+# Generated: $(date)
+# Total Phases: $PHASE_COUNT
 beads:
-  - id: [organism-issue-id]
-    title: [organism-title]
-  - id: [organism-issue-id]
-    title: [organism-title]
-  # Repeat for each organism issue
+EOF
+
+# Add each organism with its phase and spec labels
+echo "$ORGANISMS" | jq -r '.[] | "  - id: \(.id)\n    title: \(.title)"' >> agent-os/product/orchestration.yml
+
+echo ""
+echo "✓ Created agent-os/product/orchestration.yml with $(echo "$ORGANISMS" | jq '. | length') organism issues"
 ```
 
 {{ELSE}}
-Populate this file with the names of each task group found in this spec's `tasks.md` and use this EXACT structure for the content of `orchestration.yml`:
+Create `agent-os/product/orchestration.yml` by discovering all specs in agent-os/specs/:
 
-```yaml
-task_groups:
-  - name: [task-group-name]
-  - name: [task-group-name]
-  - name: [task-group-name]
-  # Repeat for each task group found in tasks.md
+```bash
+# Find all spec folders with tasks.md
+SPEC_FOLDERS=$(find agent-os/specs -name "tasks.md" -exec dirname {} \;)
+
+# Create orchestration file
+cat > agent-os/product/orchestration.yml <<EOF
+# Multi-Phase Orchestration Plan
+# Generated: $(date)
+specs:
+EOF
+
+# For each spec folder, extract task groups
+for spec_folder in $SPEC_FOLDERS; do
+    spec_name=$(basename "$spec_folder")
+
+    echo "  - spec: $spec_name" >> agent-os/product/orchestration.yml
+    echo "    task_groups:" >> agent-os/product/orchestration.yml
+
+    # Extract task group names from tasks.md
+    grep "^####" "$spec_folder/tasks.md" | sed 's/#### //' | while read -r task_group; do
+        echo "      - name: $task_group" >> agent-os/product/orchestration.yml
+    done
+done
+
+echo ""
+echo "✓ Created agent-os/product/orchestration.yml for all specs"
+cat agent-os/product/orchestration.yml
 ```
 {{ENDIF tracking_mode_beads}}
 
@@ -151,22 +271,48 @@ For beads mode, agents are automatically assigned based on atomic design levels:
 - Test gaps → `test-gap-analyzer`
 - Integration → `integration-assembler`
 
-Update `orchestration.yml` to specify the appropriate atomic design agent for each organism:
+Analyze each organism issue and assign the appropriate agent:
 
-```yaml
-beads:
-  - id: bd-a1b2  # Database organism
-    title: Database Layer
-    assignee: database-layer-builder
-    standards: [backend/*, global/atomic-design.md]
-  - id: bd-c3d4  # API organism
-    title: API Layer
-    assignee: api-layer-builder
-    standards: [backend/*, global/atomic-design.md]
-  - id: bd-e5f6  # UI organism
-    title: UI Component Layer
-    assignee: ui-component-builder
-    standards: [frontend/*, global/atomic-design.md]
+```bash
+# Already at project root
+
+# Read current orchestration.yml
+ORGANISMS=$(yq eval '.beads[] | .id' agent-os/product/orchestration.yml)
+
+# For each organism, infer the correct agent based on title
+while read -r organism_id; do
+    TITLE=$(bd show "$organism_id" --format json | jq -r '.title')
+
+    # Infer agent based on keywords in title
+    if [[ "$TITLE" =~ [Dd]atabase|[Mm]odel|[Ss]chema|[Mm]igration ]]; then
+        AGENT="database-layer-builder"
+        STANDARDS="backend/*, global/atomic-design.md"
+    elif [[ "$TITLE" =~ API|[Ee]ndpoint|[Cc]ontroller|[Rr]oute ]]; then
+        AGENT="api-layer-builder"
+        STANDARDS="backend/*, global/atomic-design.md"
+    elif [[ "$TITLE" =~ UI|[Cc]omponent|[Pp]age|[Vv]iew|[Ff]rontend ]]; then
+        AGENT="ui-component-builder"
+        STANDARDS="frontend/*, global/atomic-design.md"
+    elif [[ "$TITLE" =~ [Ii]ntegration|[Ww]ire|E2E ]]; then
+        AGENT="integration-assembler"
+        STANDARDS="global/*"
+    elif [[ "$TITLE" =~ [Tt]est.*[Gg]ap|[Cc]overage ]]; then
+        AGENT="test-gap-analyzer"
+        STANDARDS="global/test-writing.md"
+    else
+        AGENT="molecule-composer"  # Default fallback
+        STANDARDS="global/atomic-design.md"
+    fi
+
+    # Update orchestration.yml with assignee
+    yq eval -i "(.beads[] | select(.id == \"$organism_id\") | .assignee) = \"$AGENT\"" agent-os/product/orchestration.yml
+    yq eval -i "(.beads[] | select(.id == \"$organism_id\") | .standards) = [\"$STANDARDS\"]" agent-os/product/orchestration.yml
+
+    echo "✓ $organism_id ($TITLE) → $AGENT"
+done <<< "$ORGANISMS"
+
+echo ""
+echo "✓ Agent assignments complete"
 ```
 
 Note: Atom and molecule agents work on child issues automatically based on beads hierarchy.
@@ -365,58 +511,40 @@ task_groups:
 ### NEXT: Choose Execution Mode (Parallel or Sequential)
 
 {{IF tracking_mode_beads}}
-Check if parallel execution is beneficial:
+The parallel execution analysis was already done earlier. Present the final options to the user:
 
 ```bash
-cd agent-os/specs/[this-spec]/
+# Already at project root with TRACK_COUNT and EXEC_PLAN from earlier analysis
 
-# Source BV helpers
-source ../../../workflows/implementation/bv-helpers.md
-
-if bv_available; then
-    PLAN=$(get_execution_plan)
-    TRACK_COUNT=$(echo "$PLAN" | jq -r '.tracks | length')
-
-    if [[ "$TRACK_COUNT" -gt 1 ]]; then
-        echo ""
-        echo "=== Parallel Execution Opportunity ==="
-        echo "  $TRACK_COUNT independent work streams detected"
-        echo ""
-
-        # Show track summary
-        echo "$PLAN" | jq -r '
-            .tracks[] |
-            "Track \(.track_id): \(.reason)",
-            "  Items: \(.items | length)",
-            "  Top priority: \(.items[0].priority)",
-            ""
-        '
-
-        read -p "Run agents in parallel (requires multiple Claude Code instances)? [y/N]: " parallel_choice
-
-        if [[ "$parallel_choice" =~ ^[Yy]$ ]]; then
-            echo ""
-            echo "Launching parallel execution..."
-            echo "See workflows/implementation/bv-parallel-execution.md for details"
-
-            # Parallel execution workflow
-            {{workflows/implementation/bv-parallel-execution}}
-        else
-            echo ""
-            echo "Using sequential execution (one agent at a time)"
-        fi
-    else
-        echo ""
-        echo "Only one work stream detected - using sequential execution"
-    fi
+if [[ "$TRACK_COUNT" -gt 1 ]]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Ready to Execute: Choose Mode"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Option 1: Parallel Execution ($TRACK_COUNT independent work streams)"
+    echo "  - Requires $TRACK_COUNT Claude Code instances"
+    echo "  - Fastest approach"
+    echo "  - Each track works independently across all phases"
+    echo ""
+    echo "Option 2: Sequential Execution (one agent at a time)"
+    echo "  - Single Claude Code instance"
+    echo "  - Slower but simpler"
+    echo ""
 else
     echo ""
-    echo "BV unavailable - parallel execution not available"
-    echo "Using sequential execution"
+    echo "Only 1 work stream detected - sequential execution recommended"
+    echo ""
 fi
 ```
 
-Continue with sequential orchestration if not using parallel execution...
+**If user chooses parallel execution:**
+Follow the parallel execution workflow:
+{{workflows/implementation/bv-parallel-execution}}
+
+**If user chooses sequential or only 1 track exists:**
+Continue with delegation section below...
+
 {{ENDIF tracking_mode_beads}}
 
 {{ENDIF use_claude_code_subagents}}
@@ -483,18 +611,68 @@ Note: If the `use_claude_code_subagents` flag is enabled, the final `orchestrati
 {{ENDUNLESS standards_as_claude_code_skills}}
 
 {{IF use_claude_code_subagents}}
-### NEXT: Delegate task groups implementations to assigned subagents
+### NEXT: Delegate implementations to assigned subagents
 
-Loop through each task group in `agent-os/specs/[this-spec]/tasks.md` and delegate its implementation to the assigned subagent specified in `orchestration.yml`.
+{{IF tracking_mode_beads}}
+**For Beads mode:** Delegate organism issues from `orchestration.yml` to their assigned agents.
+
+Loop through each organism in `agent-os/product/orchestration.yml`:
+
+```bash
+# Already at project root
+
+# Read orchestration.yml and delegate each organism
+yq eval '.beads[]' agent-os/product/orchestration.yml -o json | jq -c '.' | while read -r organism; do
+    ORGANISM_ID=$(echo "$organism" | jq -r '.id')
+    ORGANISM_TITLE=$(echo "$organism" | jq -r '.title')
+    ASSIGNEE=$(echo "$organism" | jq -r '.assignee')
+    STANDARDS=$(echo "$organism" | jq -r '.standards | join(", ")')
+
+    # Get organism details from beads
+    ORGANISM_DATA=$(bd show "$ORGANISM_ID" --format json)
+    SPEC_LABEL=$(echo "$ORGANISM_DATA" | jq -r '.labels[] | select(startswith("phase-") | not)')
+    SPEC_PATH="agent-os/specs/$SPEC_LABEL"
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Delegating: $ORGANISM_TITLE"
+    echo "  Issue: $ORGANISM_ID"
+    echo "  Agent: $ASSIGNEE"
+    echo "  Spec: $SPEC_PATH"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Delegate to the assigned agent
+    # (This would call the appropriate subagent with context)
+    # For now, just mark for tracking
+done
+```
+
+For each organism delegation, provide the subagent with:
+- The organism issue ID from Beads
+- The spec file: `agent-os/specs/[spec-label]/spec.md`
+- The requirements: `agent-os/specs/[spec-label]/planning/requirements.md`
+- Instruct subagent to:
+  - Implement the organism and its child molecules/atoms
+  - Update Beads issue status as work progresses
+  - Close the organism issue when complete
+
+{{ELSE}}
+**For tasks.md mode:** Loop through each spec's task groups.
+
+For EACH spec in `agent-os/product/orchestration.yml`:
+  - Read that spec's `tasks.md` file
+  - Loop through each task group
+  - Delegate to the assigned subagent specified in orchestration.yml
 
 For each delegation, provide the subagent with:
 - The task group (including the parent task and all sub-tasks)
-- The spec file: `agent-os/specs/[this-spec]/spec.md`
+- The spec file: `agent-os/specs/[spec-slug]/spec.md`
 - Instruct subagent to:
   - Perform their implementation
-  - Check off the task and sub-task(s) in `agent-os/specs/[this-spec]/tasks.md`
-{{UNLESS standards_as_claude_code_skills}}
+  - Check off the task and sub-task(s) in `agent-os/specs/[spec-slug]/tasks.md`
+{{ENDIF tracking_mode_beads}}
 
+{{UNLESS standards_as_claude_code_skills}}
 In addition to the above items, also instruct the subagent to closely adhere to the user's standards & preferences as specified in the following files.  To build the list of file references to give to the subagent, follow these instructions:
 
 {{workflows/implementation/compile-implementation-standards}}

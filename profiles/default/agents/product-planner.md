@@ -42,7 +42,7 @@ Verify all files created successfully:
 
 ```bash
 # Validate all product files exist
-for file in mission.md roadmap.md; do
+for file in mission.md roadmap.md tech-stack.md; do
     if [ ! -f "agent-os/product/$file" ]; then
         echo "Error: Missing $file"
     else

@@ -19,19 +19,38 @@ First, check if the user has already provided instructions about which task grou
 **If the user has NOT provided instructions:**
 
 {{IF tracking_mode_beads}}
-Query beads to find ready work:
+Query beads to find ready work for this spec:
 
 ```bash
-cd agent-os/specs/[this-spec]/
-bd ready
+# Navigate to project root (where .beads/ is located)
+cd /path/to/project-root
+
+# Source BV helpers
+source agent-os/profiles/default/workflows/implementation/bv-helpers.md
+
+# Get spec name
+SPEC_NAME="[this-spec-slug]"
+
+# Get ready work for this spec using BV (or fall back to bd)
+if bv_available; then
+    echo "Finding ready work for $SPEC_NAME using BV..."
+    READY=$(bv --unblocked --filter "label:$SPEC_NAME" --format json 2>/dev/null || \
+            bd ready --label "$SPEC_NAME" --format json)
+else
+    echo "Finding ready work for $SPEC_NAME using bd..."
+    READY=$(bd ready --label "$SPEC_NAME" --format json)
+fi
+
+# Display ready work
+echo "$READY" | jq -r '.[] | "  • \(.id): \(.title) (P\(.priority // "?"))"'
 ```
 
 Show the user the ready work and ask:
 
 ```
-Ready work from beads:
+Ready work from beads for [this-spec]:
 
-[List ready issues from bd ready output]
+[List ready issues from above output]
 
 Should we proceed with all ready work, or specify which issues to implement?
 ```
@@ -65,7 +84,30 @@ Instruct the subagent to:
 ### PHASE 3: Produce the final verification report
 
 {{IF tracking_mode_beads}}
-IF ALL beads issues are closed (check with `bd list --json | jq -r '.[] | select(.status!="closed")'`), then proceed with this step. Otherwise, return to PHASE 1.
+Check if ALL beads issues for this spec are closed:
+
+```bash
+# Navigate to project root
+cd /path/to/project-root
+
+# Get spec name
+SPEC_NAME="[this-spec-slug]"
+
+# Check for open issues in this spec
+OPEN_ISSUES=$(bd list --label "$SPEC_NAME" --format json | jq -r '.[] | select(.status!="closed") | .id')
+
+if [ -z "$OPEN_ISSUES" ]; then
+    echo "✓ All issues for $SPEC_NAME are closed"
+else
+    echo "⚠️  Open issues remaining for $SPEC_NAME:"
+    echo "$OPEN_ISSUES"
+    echo ""
+    echo "Return to PHASE 1 to continue implementation"
+    exit 0
+fi
+```
+
+IF ALL issues for this spec are closed, then proceed with this step. Otherwise, return to PHASE 1.
 
 Assuming all issues are closed, then delegate to the **implementation-verifier** subagent to do its implementation verification and produce its final verification report.
 
