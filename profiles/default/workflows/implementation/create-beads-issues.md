@@ -222,8 +222,8 @@ bd create "[Organism] UI Component Layer" \
   -t organism \
   -p 2 \
   --parent "$EPIC_ID" \
-  --labelui \
-  --labelfrontend \
+  --label "ui" \
+  --label "frontend" \
   --assignee ui-component-builder \
   --description "$(cat <<EOF
 Implement UI components, forms, pages, styles, and interactions.
@@ -299,7 +299,7 @@ bd create "[Molecule] Login form component" \
   -t molecule \
   -p 3 \
   --parent "$UI_ORGANISM_ID" \
-  --labelui \
+  --label "ui" \
   --assignee molecule-composer \
   --description "Compose email input + password input + submit button into login form"
 
@@ -467,18 +467,29 @@ INTEGRATION_ID=$(bd list --label "phase-$PHASE_NUM" --format=json | \
 if [ "$PHASE_NUM" -gt 1 ]; then
   PREV_PHASE=$((PHASE_NUM - 1))
 
-  # Get previous phase's integration issue
-  PREV_INTEGRATION=$(bd list --label "phase-$PREV_PHASE" --format=json | \
-    jq -r '.[] | select(.title | contains("[Integration]")) | .id')
+  echo "Linking Phase $PHASE_NUM dependencies to Phase $PREV_PHASE..."
 
-  if [ -n "$PREV_INTEGRATION" ]; then
-    echo "Setting dependency: Phase $PHASE_NUM epic blocked by Phase $PREV_PHASE integration"
+  # Find previous phase's integration issue
+  PREV_INTEGRATION=$(bd list --label "phase-$PREV_PHASE" --format=json | \
+    jq -r '.[] | select(.title | contains("[Integration]")) | .id' | head -1)
+
+  if [ -z "$PREV_INTEGRATION" ]; then
+    echo "⚠️  Warning: No integration issue found for Phase $PREV_PHASE"
+    echo "   Phase $PHASE_NUM epic will NOT be blocked"
+    echo "   This may allow phases to run out of order"
+  else
+    # Set dependency: This phase's epic blocks on previous phase's integration
     bd dep add "$EPIC_ID" "$PREV_INTEGRATION" --type blocks
 
-    echo "✓ Phase $PHASE_NUM will start after Phase $PREV_PHASE completes"
-  else
-    echo "⚠️  WARNING: Phase $PREV_PHASE integration issue not found"
-    echo "    Phase $PHASE_NUM may run in parallel with Phase $PREV_PHASE"
+    echo "✓ Phase $PHASE_NUM epic ($EPIC_ID) blocks on Phase $PREV_PHASE integration ($PREV_INTEGRATION)"
+
+    # Verify dependency was created
+    if bd show "$EPIC_ID" --format json | jq -e '.blocks | contains(["'"$PREV_INTEGRATION"'"])' > /dev/null; then
+      echo "✓ Dependency verified in graph"
+    else
+      echo "❌ ERROR: Dependency creation failed"
+      exit 1
+    fi
   fi
 else
   echo "✓ Phase 1 - no dependencies (foundation phase)"

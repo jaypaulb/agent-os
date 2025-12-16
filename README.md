@@ -61,6 +61,47 @@ Choose your workflow at spec initialization:
 
 All workflows support both modes via conditional compilation.
 
+### Architecture: Beads Issue Tracking
+
+**Location:**
+Agent-OS uses **unified project-level issue tracking** via Beads:
+- **Location**: `.beads/` directory at PROJECT ROOT (not in spec folders)
+- **Scope**: All specs and phases tracked in single repository
+- **Filtering**: Issues labeled by phase (`phase-1`, `phase-2`) and spec (`user-authentication`, `dashboard`)
+
+**Why Project Root?**
+- Enables cross-phase dependency tracking
+- Supports multi-phase parallel execution
+- Single source of truth for all work items
+- BV (Beads Visualizer) can analyze entire product graph
+
+**Folder Structure:**
+```
+project/
+├── .beads/               ← All issues here (project root)
+│   └── issues.jsonl
+├── agent-os/
+│   ├── product/          ← Product docs (mission, roadmap, tech-stack)
+│   └── specs/
+│       ├── user-auth/    ← Spec docs only (spec.md, requirements.md)
+│       └── dashboard/    ← Spec docs only (no .beads/ here)
+```
+
+**Querying Issues:**
+```bash
+# All ready work across all phases
+bd ready
+
+# Specific phase
+bd ready --label "phase-1"
+
+# Specific spec
+bd ready --label "user-authentication"
+
+# Specific phase AND spec
+bd ready --label "phase-1" --label "dashboard"
+```
+
 ---
 
 ## 📦 Installation (Fork)

@@ -30,6 +30,38 @@ For complex features using atomic design principles, coordinate specialized agen
 - Tasks.md or beads issues are organized by atomic design levels
 - Long-running, multi-session implementation
 
+---
+
+## Mode Selection Guide
+
+The implementer agent operates in two modes. Use this decision tree:
+
+### Mode 1: Direct Implementation
+**Use when:**
+- Single organism (database OR API OR UI, not multiple)
+- Estimated time <2 hours
+- Simple, well-defined feature
+- No complex inter-layer dependencies
+- Team size: 1 developer
+
+**How:** Implementer directly writes all code (atoms → molecules → organism → tests → integration)
+
+### Mode 2: Coordination Mode
+**Use when:**
+- Multiple organisms (database AND API AND UI)
+- Estimated time >2 hours
+- Complex feature with many moving parts
+- Inter-layer dependencies require coordination
+- Team size: Multiple developers or sessions
+
+**How:** Implementer delegates to specialized agents (atom-writer, molecule-composer, database-layer-builder, etc.) and coordinates their work
+
+### Still unsure?
+- **Default to Coordination Mode** for multi-organism features
+- **Default to Direct Mode** for single-organism features
+
+---
+
 ## Coordination Guidelines
 
 When coordinating atomic design agents:
