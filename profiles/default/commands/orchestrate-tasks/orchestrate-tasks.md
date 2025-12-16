@@ -4,7 +4,39 @@ Orchestrate implementation across ALL specs/phases in parallel from project root
 
 **Run this from PROJECT ROOT, not from a spec folder.**
 
+## Execution Modes
+
+This workflow supports two modes:
+
+1. **Interactive Mode** (default): Full orchestration with agent delegation
+2. **Headless Mode** (`--headless` flag): Prepare orchestration state and exit (for autonomous-build)
+
+To run in headless mode for autonomous-build integration:
+```bash
+/orchestrate-tasks --headless
+```
+
 ## Multi-Phase Process
+
+### FIRST: Check for Headless Mode
+
+```bash
+# Parse command-line arguments
+HEADLESS_MODE=false
+
+for arg in "$@"; do
+    if [ "$arg" = "--headless" ]; then
+        HEADLESS_MODE=true
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  HEADLESS MODE: Autonomous Build Integration"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "Creating orchestration state for autonomous-build..."
+        echo ""
+        break
+    fi
+done
+```
 
 ### FIRST: Verify Beads and Get All Phases
 
@@ -196,7 +228,7 @@ fi
 ### NEXT: Create Orchestration Plan
 
 {{IF tracking_mode_beads}}
-Create `agent-os/product/orchestration.yml` with ALL organism issues across ALL phases:
+Create orchestration.yml with ALL organism issues across ALL phases:
 
 ```bash
 # Already at project root
@@ -209,19 +241,35 @@ else
     ORGANISMS=$(bd list --type organism --format json)
 fi
 
+# Choose output path based on mode
+if [ "$HEADLESS_MODE" = true ]; then
+    # Headless mode: Write to autonomous-build state directory
+    ORCHESTRATION_FILE=".beads/autonomous-state/orchestration.yml"
+
+    # Ensure directory exists
+    mkdir -p .beads/autonomous-state
+else
+    # Interactive mode: Write to product directory
+    ORCHESTRATION_FILE="agent-os/product/orchestration.yml"
+
+    # Ensure directory exists
+    mkdir -p agent-os/product
+fi
+
 # Create orchestration file
-cat > agent-os/product/orchestration.yml <<EOF
+cat > "$ORCHESTRATION_FILE" <<EOF
 # Multi-Phase Orchestration Plan
 # Generated: $(date)
 # Total Phases: $PHASE_COUNT
+# Mode: $([ "$HEADLESS_MODE" = true ] && echo "headless" || echo "interactive")
 beads:
 EOF
 
 # Add each organism with its phase and spec labels
-echo "$ORGANISMS" | jq -r '.[] | "  - id: \(.id)\n    title: \(.title)"' >> agent-os/product/orchestration.yml
+echo "$ORGANISMS" | jq -r '.[] | "  - id: \(.id)\n    title: \(.title)"' >> "$ORCHESTRATION_FILE"
 
 echo ""
-echo "✓ Created agent-os/product/orchestration.yml with $(echo "$ORGANISMS" | jq '. | length') organism issues"
+echo "✓ Created $ORCHESTRATION_FILE with $(echo "$ORGANISMS" | jq '. | length') organism issues"
 ```
 
 {{ELSE}}
@@ -277,8 +325,8 @@ Analyze each organism issue and assign the appropriate agent:
 ```bash
 # Already at project root
 
-# Read current orchestration.yml
-ORGANISMS=$(yq eval '.beads[] | .id' agent-os/product/orchestration.yml)
+# Read current orchestration.yml (using variable from earlier section)
+ORGANISMS=$(yq eval '.beads[] | .id' "$ORCHESTRATION_FILE")
 
 # For each organism, infer the correct agent based on title
 while read -r organism_id; do
@@ -306,8 +354,8 @@ while read -r organism_id; do
     fi
 
     # Update orchestration.yml with assignee
-    yq eval -i "(.beads[] | select(.id == \"$organism_id\") | .assignee) = \"$AGENT\"" agent-os/product/orchestration.yml
-    yq eval -i "(.beads[] | select(.id == \"$organism_id\") | .standards) = [\"$STANDARDS\"]" agent-os/product/orchestration.yml
+    yq eval -i "(.beads[] | select(.id == \"$organism_id\") | .assignee) = \"$AGENT\"" "$ORCHESTRATION_FILE"
+    yq eval -i "(.beads[] | select(.id == \"$organism_id\") | .standards) = [\"$STANDARDS\"]" "$ORCHESTRATION_FILE"
 
     echo "✓ $organism_id ($TITLE) → $AGENT"
 done <<< "$ORGANISMS"
@@ -611,19 +659,42 @@ task_groups:
 Note: If the `use_claude_code_subagents` flag is enabled, the final `orchestration.yml` would include BOTH `claude_code_subagent` assignments AND `standards` for each task group.
 {{ENDUNLESS standards_as_claude_code_skills}}
 
+### NEXT: Headless Mode Exit (if applicable)
+
+```bash
+# If running in headless mode, exit here and return control
+if [ "$HEADLESS_MODE" = true ]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✅ Headless Mode Complete"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Orchestration state prepared for autonomous-build:"
+    echo "  • File: $ORCHESTRATION_FILE"
+    echo "  • Organisms: $(yq eval '.beads | length' "$ORCHESTRATION_FILE")"
+    echo "  • Agents assigned: Yes"
+    echo ""
+    echo "You can now run /autonomous-build to begin parallel implementation"
+    echo ""
+    exit 0
+fi
+```
+
+**Interactive mode continues below** (only if not in headless mode):
+
 {{IF use_claude_code_subagents}}
 ### NEXT: Delegate implementations to assigned subagents
 
 {{IF tracking_mode_beads}}
 **For Beads mode:** Delegate organism issues from `orchestration.yml` to their assigned agents.
 
-Loop through each organism in `agent-os/product/orchestration.yml`:
+Loop through each organism in orchestration.yml:
 
 ```bash
 # Already at project root
 
-# Read orchestration.yml and delegate each organism
-yq eval '.beads[]' agent-os/product/orchestration.yml -o json | jq -c '.' | while read -r organism; do
+# Read orchestration.yml and delegate each organism (using variable from earlier)
+yq eval '.beads[]' "$ORCHESTRATION_FILE" -o json | jq -c '.' | while read -r organism; do
     ORGANISM_ID=$(echo "$organism" | jq -r '.id')
     ORGANISM_TITLE=$(echo "$organism" | jq -r '.title')
     ASSIGNEE=$(echo "$organism" | jq -r '.assignee')
