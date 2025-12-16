@@ -182,11 +182,9 @@ echo "Harness repository: $HARNESS_REPO"
 echo "Harness branch: $HARNESS_BRANCH"
 echo "Harness path: $HARNESS_PATH"
 
-# NOTE: Git remote URL preference order for HARNESS_REPO in config.yml:
-#   1. SSH (preferred): git@github.com:user/repo.git
-#   2. HTTPS (fallback): https://github.com/user/repo.git
-#   3. gh CLI (fallback): Use gh repo clone if git clone fails
-# SSH is preferred for automated workflows to avoid authentication prompts
+# Extract repo identifier for fallback attempts
+# Support both SSH (git@github.com:user/repo.git) and HTTPS (https://github.com/user/repo.git)
+REPO_IDENTIFIER=$(echo "$HARNESS_REPO" | sed -E 's#^(https://|git@)github\.com[:/](.+)\.git$#\2#')
 
 # Install or update harness
 if [ -d "$HARNESS_PATH" ]; then
@@ -197,7 +195,57 @@ if [ -d "$HARNESS_PATH" ]; then
   git -C "$HARNESS_PATH" pull origin "$HARNESS_BRANCH"
 else
   echo "Installing harness..."
-  git clone "$HARNESS_REPO" "$HARNESS_PATH"
+
+  # Try git clone with automatic fallback: SSH -> HTTPS -> gh CLI
+  CLONE_SUCCESS=false
+
+  # Method 1: Try configured URL first
+  echo "Attempting clone with configured URL..."
+  if git clone "$HARNESS_REPO" "$HARNESS_PATH" 2>/dev/null; then
+    CLONE_SUCCESS=true
+    echo "✓ Cloned successfully with configured URL"
+  else
+    echo "Failed with configured URL, trying alternatives..."
+
+    # Method 2: Try SSH if configured URL was HTTPS
+    if [[ "$HARNESS_REPO" == https://* ]]; then
+      SSH_URL="git@github.com:${REPO_IDENTIFIER}.git"
+      echo "Attempting SSH: $SSH_URL"
+      if git clone "$SSH_URL" "$HARNESS_PATH" 2>/dev/null; then
+        CLONE_SUCCESS=true
+        echo "✓ Cloned successfully with SSH"
+      fi
+    fi
+
+    # Method 3: Try HTTPS if configured URL was SSH
+    if [ "$CLONE_SUCCESS" = false ] && [[ "$HARNESS_REPO" == git@* ]]; then
+      HTTPS_URL="https://github.com/${REPO_IDENTIFIER}.git"
+      echo "Attempting HTTPS: $HTTPS_URL"
+      if git clone "$HTTPS_URL" "$HARNESS_PATH" 2>/dev/null; then
+        CLONE_SUCCESS=true
+        echo "✓ Cloned successfully with HTTPS"
+      fi
+    fi
+
+    # Method 4: Try gh CLI as last resort
+    if [ "$CLONE_SUCCESS" = false ] && command -v gh &> /dev/null; then
+      echo "Attempting gh CLI: gh repo clone ${REPO_IDENTIFIER}"
+      if gh repo clone "$REPO_IDENTIFIER" "$HARNESS_PATH" 2>/dev/null; then
+        CLONE_SUCCESS=true
+        echo "✓ Cloned successfully with gh CLI"
+      fi
+    fi
+
+    # Check if any method succeeded
+    if [ "$CLONE_SUCCESS" = false ]; then
+      echo "❌ ERROR: Failed to clone harness repository"
+      echo "Tried: configured URL, SSH, HTTPS, gh CLI"
+      echo "Repository: $REPO_IDENTIFIER"
+      exit 1
+    fi
+  fi
+
+  # Checkout specified branch
   git -C "$HARNESS_PATH" checkout "$HARNESS_BRANCH"
 
   # Add .harness to .gitignore if not already there
