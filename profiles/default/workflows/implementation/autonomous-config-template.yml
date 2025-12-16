@@ -1,0 +1,136 @@
+# Autonomous Build Configuration Template
+#
+# Copy this file to your project's .beads/ directory as autonomous-config.yml
+# to customize autonomous build behavior.
+#
+# Location: .beads/autonomous-config.yml
+
+# Auto-continue delay (seconds)
+# How long to wait between sessions before spawning the next agent
+# Default: 3
+auto_continue_delay: 3
+
+# Max iterations
+# Maximum number of implementation sessions to run
+# 0 = unlimited (recommended for autonomous builds)
+# Set a limit for testing or to control costs
+# Default: 0 (unlimited)
+max_iterations: 0
+
+# Regression testing
+regression_testing:
+  # Enable cross-phase regression testing
+  # When true: test random issue from each completed phase
+  # When false: skip regression testing
+  # Default: true
+  enabled: true
+
+  # Number of issues to test per completed phase
+  # 1 = fast, catches major breaks
+  # 2-3 = more thorough
+  # Default: 1
+  issues_per_phase: 1
+
+  # Stop build on regression
+  # When true: always stop when regression detected
+  # When false: ask user whether to continue
+  # Default: false (ask user)
+  stop_on_regression: false
+
+# Quality bar
+quality_bar:
+  # Require zero console errors
+  # When true: regression fails if console errors found
+  # When false: allow console errors (not recommended)
+  # Default: true
+  require_zero_console_errors: true
+
+  # Require polished UI
+  # When true: visual regressions cause failure
+  # When false: only check functionality
+  # Default: true
+  require_polished_ui: true
+
+  # Require all tests pass
+  # When true: any test failure causes regression failure
+  # When false: allow some test failures
+  # Default: true
+  require_all_tests_pass: true
+
+# BV (Beads Visualizer) integration
+bv:
+  # Enable BV for graph intelligence
+  # When true: use BV for bottleneck/keystone/influencer analysis
+  # When false: fall back to basic bd ready
+  # Default: true (auto-detect if BV available)
+  enabled: true
+
+  # Display detailed metrics
+  # When true: show bottlenecks, keystones, influencers between sessions
+  # When false: minimal output
+  # Default: true
+  show_metrics: true
+
+  # Check for cycles
+  # When true: warn about circular dependencies
+  # When false: skip cycle detection
+  # Default: true
+  check_cycles: true
+
+# Session behavior
+session:
+  # Record session start commit
+  # When true: track git commit for session diff
+  # When false: skip session tracking
+  # Default: true
+  track_diff: true
+
+  # Write session summaries to META issue
+  # When true: agents write handoff notes to META issue
+  # When false: skip META issue updates
+  # Default: true
+  write_summaries: true
+
+  # Target issues per session
+  # Guideline for implementer agents (not enforced)
+  # 1-2 = quality focus
+  # 3-5 = velocity focus
+  # Default: 1-2
+  target_issues_per_session: "1-2"
+
+# Application settings
+app:
+  # Base URL for the application
+  # Used by regression testing to navigate to features
+  # Default: http://localhost:3000
+  base_url: "http://localhost:3000"
+
+  # Start command
+  # Command to start the app (if not running)
+  # Leave empty to assume app is already running
+  # Examples: "npm start", "rails server", "python app.py"
+  # Default: empty
+  start_command: ""
+
+  # Health check endpoint
+  # URL to check if app is running
+  # Example: "/health", "/api/status"
+  # Default: empty (no health check)
+  health_check_endpoint: ""
+
+# Notifications (future enhancement)
+notifications:
+  # Notify on completion
+  # When true: send notification when build completes
+  # Default: false (not implemented yet)
+  on_completion: false
+
+  # Notify on regression
+  # When true: send notification when regression detected
+  # Default: false (not implemented yet)
+  on_regression: false
+
+  # Notification method
+  # Options: "email", "slack", "webhook"
+  # Default: empty (not implemented yet)
+  method: ""
