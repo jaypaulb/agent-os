@@ -388,24 +388,6 @@ You are continuing their work. DO NOT start from scratch.
     echo "   🔄 Recovery mode (continue from step $CONTINUE_FROM)"
   fi
 
-  # Checkpoint file for this organism (external progress tracking)
-  CHECKPOINT_FILE=".beads/autonomous-state/checkpoints/${ORGANISM_ID}.json"
-  mkdir -p .beads/autonomous-state/checkpoints
-
-  # Initialize checkpoint
-  cat > "$CHECKPOINT_FILE" <<CKPT
-{
-  "organism_id": "$ORGANISM_ID",
-  "slot": $SLOT,
-  "started_at": "$(date -Iseconds)",
-  "current_step": 0,
-  "steps_completed": [],
-  "files_modified": [],
-  "commits": [],
-  "status": "starting"
-}
-CKPT
-
   # Spawn agent via Task tool (background=true)
   TASK_PROMPT="You are the implementer agent working on organism $ORGANISM_ID.
 
@@ -419,60 +401,61 @@ Your task: Implement this organism, test it, and close it.
 
 ## CRITICAL: Checkpoint Protocol
 
-You MUST write progress to checkpoint file after EACH step. This allows recovery if you run out of context.
+You MUST log progress via \`bd comment\` after EACH step. This allows recovery if you run out of context.
 
-**Checkpoint file**: $CHECKPOINT_FILE
-
-**After completing each step, run:**
+**After completing each step:**
 \`\`\`bash
-jq '.current_step = N | .steps_completed += [\"step_name\"] | .status = \"in_progress\"' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
-\`\`\`
-
-**After modifying files:**
-\`\`\`bash
-jq '.files_modified += [\"path/to/file.go\"]' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
+bd comment $ORGANISM_ID \"CHECKPOINT: step N - description\"
 \`\`\`
 
 **After each commit:**
 \`\`\`bash
-COMMIT_SHA=\$(git rev-parse HEAD)
-jq \".commits += [\\\"\$COMMIT_SHA\\\"]\" $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
+bd comment $ORGANISM_ID \"COMMIT: \$(git rev-parse --short HEAD) - description\"
 \`\`\`
 
 ## Process:
 
-1. **Read organism details** (checkpoint: step 1):
+1. **Read organism details**:
    \`\`\`bash
    bd show $ORGANISM_ID
-   jq '.current_step = 1 | .steps_completed += [\"read_details\"] | .status = \"in_progress\"' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
+   bd comment $ORGANISM_ID \"CHECKPOINT: step 1 - read details\"
    \`\`\`
 
-2. **Claim the organism** (checkpoint: step 2):
+2. **Claim the organism**:
    \`\`\`bash
    bd update $ORGANISM_ID --status in_progress
-   jq '.current_step = 2 | .steps_completed += [\"claimed\"]' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
+   bd comment $ORGANISM_ID \"CHECKPOINT: step 2 - claimed\"
    \`\`\`
 
-3. **Implement** (checkpoint: step 3):
+3. **Implement**:
    - Read spec context (if spec label exists)
    - Implement the feature
    - **COMMIT after implementation** (before tests)
-   - Update checkpoint with files_modified and commit SHA
+   \`\`\`bash
+   git add -A && git commit -m \"impl($ORGANISM_ID): description\"
+   bd comment $ORGANISM_ID \"COMMIT: \$(git rev-parse --short HEAD) - implementation\"
+   bd comment $ORGANISM_ID \"CHECKPOINT: step 3 - implemented\"
+   \`\`\`
 
-4. **Write tests** (checkpoint: step 4):
+4. **Write tests**:
    - Write tests for the implementation
    - **COMMIT after writing tests**
-   - Update checkpoint
+   \`\`\`bash
+   git add -A && git commit -m \"test($ORGANISM_ID): description\"
+   bd comment $ORGANISM_ID \"COMMIT: \$(git rev-parse --short HEAD) - tests\"
+   bd comment $ORGANISM_ID \"CHECKPOINT: step 4 - tests written\"
+   \`\`\`
 
-5. **Run tests** (checkpoint: step 5):
+5. **Run tests**:
    - Run tests and verify they pass
-   - Update checkpoint with test results
+   \`\`\`bash
+   bd comment $ORGANISM_ID \"CHECKPOINT: step 5 - tests passing\"
+   \`\`\`
 
-6. **Close organism** (checkpoint: step 6 - FINAL):
+6. **Close organism** (FINAL):
    \`\`\`bash
    bd update $ORGANISM_ID --status closed
-   bd comment $ORGANISM_ID \"Implementation complete. Tests passing.\"
-   jq '.current_step = 6 | .steps_completed += [\"closed\"] | .status = \"completed\"' $CHECKPOINT_FILE > /tmp/ckpt.json && mv /tmp/ckpt.json $CHECKPOINT_FILE
+   bd comment $ORGANISM_ID \"CHECKPOINT: step 6 - COMPLETE\"
    \`\`\`
 
 7. **Return control**: You're done. Orchestrator will continue.
@@ -481,8 +464,7 @@ jq \".commits += [\\\"\$COMMIT_SHA\\\"]\" $CHECKPOINT_FILE > /tmp/ckpt.json && m
 
 Project root: $(pwd)
 Organism: $ORGANISM_ID
-Slot: $SLOT
-Checkpoint: $CHECKPOINT_FILE"
+Slot: $SLOT"
 
   # Spawn via Task tool (this is where you call the Task tool with run_in_background=true)
   # The orchestrator (Claude) will make this tool call
