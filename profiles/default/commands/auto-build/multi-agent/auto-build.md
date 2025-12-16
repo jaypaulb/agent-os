@@ -180,6 +180,12 @@ echo "Harness repository: $HARNESS_REPO"
 echo "Harness branch: $HARNESS_BRANCH"
 echo "Harness path: $HARNESS_PATH"
 
+# NOTE: Git remote URL preference order for HARNESS_REPO in config.yml:
+#   1. SSH (preferred): git@github.com:user/repo.git
+#   2. HTTPS (fallback): https://github.com/user/repo.git
+#   3. gh CLI (fallback): Use gh repo clone if git clone fails
+# SSH is preferred for automated workflows to avoid authentication prompts
+
 # Install or update harness
 if [ -d "$HARNESS_PATH" ]; then
   echo "✓ Harness found at $HARNESS_PATH"

@@ -86,6 +86,12 @@ beads_enabled: true
 # Used by /auto-build command to launch autonomous implementation
 #
 # This is the Beads-converted autonomous coding harness
+#
+# Git remote URL preference order:
+#   1. SSH (preferred): git@github.com:jaypaulb/Beads-Autonomous-Coding-Harness.git
+#   2. HTTPS (fallback): https://github.com/jaypaulb/Beads-Autonomous-Coding-Harness.git
+#   3. gh CLI (fallback): Used if git clone fails
+# SSH is preferred for automated workflows to avoid authentication prompts
 # ================================================
 autonomous_harness_repo: https://github.com/jaypaulb/Beads-Autonomous-Coding-Harness.git
 autonomous_harness_branch: main
