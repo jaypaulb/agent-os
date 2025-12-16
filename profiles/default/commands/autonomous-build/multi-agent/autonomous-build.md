@@ -2,6 +2,22 @@
 
 You are the autonomous build orchestrator running as a **dev team manager**. Your job is to coordinate up to 5 specialized agents working in parallel, dynamically dispatching work, validating outcomes, and learning from errors.
 
+## ⚠️ IMPORTANT: How to Execute This Command
+
+**The bash code blocks in this file are INSTRUCTIONS, not scripts.**
+
+- Run commands **ONE AT A TIME** using the Bash tool
+- Do NOT copy entire code blocks and run them as single commands
+- Multi-line blocks show the SEQUENCE of commands to run individually
+- Variable assignments (e.g., `VAR=$(...)`) should be run as single-line commands
+
+**Example - run these as 3 separate Bash tool calls:**
+```
+READY=$(bd ready --json | jq '. | length')   ← Bash tool call 1
+IN_PROG=$(bd list --status in_progress...)   ← Bash tool call 2
+echo "Ready: $READY, In Progress: $IN_PROG"  ← Bash tool call 3
+```
+
 ## Prerequisites & Dependencies
 
 **CRITICAL**: This orchestrator uses `bd` and `bv` EXCLUSIVELY for issue tracking and selection.
@@ -9,10 +25,14 @@ You are the autonomous build orchestrator running as a **dev team manager**. You
 - NO custom orchestration.yml files
 - ALL issue state comes from bd/bv commands
 
+First, verify bd and bv are available:
+
 ```bash
-# Verify bd and bv are available
-command -v bd &>/dev/null || { echo "❌ bd not found"; exit 1; }
-command -v bv &>/dev/null || { echo "❌ bv not found"; exit 1; }
+command -v bd
+```
+
+```bash
+command -v bv
 ```
 
 ## Your Responsibilities
@@ -185,31 +205,33 @@ fi
 
 echo "✓ State initialized"
 
-# Show current state from bd/bv
-echo ""
-echo "=== Current State (from bd/bv) ==="
-
-READY=$(bd ready --json 2>/dev/null | jq '. | length')
-IN_PROGRESS=$(bd list --status in_progress --json 2>/dev/null | jq '. | length')
-CLOSED=$(bd list --status closed --json 2>/dev/null | jq '. | length')
-FAILED=$(bd list --label failed --json 2>/dev/null | jq '. | length' || echo "0")
-
-echo "  Ready: $READY"
-echo "  In Progress: $IN_PROGRESS"
-echo "  Closed: $CLOSED"
-echo "  Failed: $FAILED"
-echo "  Agent slots: $MAX_AGENTS concurrent"
-echo ""
-
-# Get execution plan from bv
-echo "=== Execution Plan (from bv --robot-plan) ==="
-bv --robot-plan 2>/dev/null | jq -r '.plan.tracks[:3][] | "Track \(.track_id): \(.items | length) items - \(.reason)"'
-echo ""
-
-echo "Starting parallel agent pool (max $MAX_AGENTS concurrent)..."
-echo "Say 'stop' or 'pause' anytime to interrupt"
-echo ""
 ```
+
+**Show current state** - run these commands individually:
+
+```bash
+bd ready --json | jq '. | length'
+```
+
+```bash
+bd list --status in_progress --json | jq '. | length'
+```
+
+```bash
+bd list --status closed --json | jq '. | length'
+```
+
+```bash
+bd list --label failed --json | jq '. | length'
+```
+
+**Get execution plan:**
+
+```bash
+bv --robot-plan | jq -r '.plan.tracks[:3][] | "Track \(.track_id): \(.items | length) items"'
+```
+
+Then output: "Starting parallel agent pool (max 5 concurrent)..."
 
 ---
 
