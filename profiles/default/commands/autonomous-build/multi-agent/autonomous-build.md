@@ -337,9 +337,11 @@ jq ".slots[\"$SLOT\"] = {\"organism_id\": \"$ORGANISM_ID\", \"task_id\": \"$TASK
   .beads/autonomous-state/agent-pool.json > /tmp/ap.json && mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
 ```
 
-### STEP 2: Monitor Active Agents
+### STEP 2: Monitor Active Agents (Context-Aware)
 
-Check status of all active agents (non-blocking poll):
+**CRITICAL**: Do NOT read full agent output - it fills your context and causes exhaustion.
+
+Check status of all active agents using **status-only** polling:
 
 ```bash
 # For each active slot
@@ -347,85 +349,96 @@ for SLOT in $(jq -r '.slots | keys[]' .beads/autonomous-state/agent-pool.json 2>
   TASK_ID=$(jq -r ".slots[\"$SLOT\"].task_id" .beads/autonomous-state/agent-pool.json)
   ORGANISM_ID=$(jq -r ".slots[\"$SLOT\"].organism_id" .beads/autonomous-state/agent-pool.json)
 
-  echo "Checking slot $SLOT: $ORGANISM_ID (task: $TASK_ID)"
+  echo "Checking slot $SLOT: $ORGANISM_ID"
 
-  echo "**NOW CHECK AGENT STATUS VIA TaskOutput TOOL**:"
-  echo "  task_id: \"$TASK_ID\""
-  echo "  block: false"
-  echo ""
+  # IMPORTANT: Check bd status FIRST (doesn't fill context)
+  BD_STATUS=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.status')
 
-  # NOTE: You (Claude) call TaskOutput(task_id, block=false)
-  # If status == "completed": proceed to STEP 3
-  # If status == "running": continue monitoring
+  if [ "$BD_STATUS" = "closed" ]; then
+    echo "✅ Organism closed (bd confirms)"
+    # Proceed to STEP 3 for this slot
+  else
+    # Only check TaskOutput if bd says not closed yet
+    echo "  Status: $BD_STATUS (checking task...)"
+    # TaskOutput(task_id, block=false) - status only, don't expand output
+  fi
 done
 ```
 
-### STEP 3: Handle Agent Completions
+**Tool call pattern** (you Claude orchestrator):
+```python
+# Check task status ONLY - do NOT read output content
+TaskOutput(task_id="xxx", block=False)
+# Just note: "running" or "completed"
+# Do NOT expand or read the output content
+```
 
-For each completed agent, validate and update status via bd:
+### STEP 3: Handle Agent Completions (Minimal Context)
+
+**CRITICAL**: Validate via bd, NOT by reading agent output.
+
+The agent's job was to close the organism via `bd close`. We check bd, not agent output.
 
 ```bash
-# For completed agent with TASK_ID, ORGANISM_ID, SLOT:
+# For completed task with ORGANISM_ID, SLOT:
 
-echo "✅ Agent in slot $SLOT completed: $ORGANISM_ID"
+echo "Agent in slot $SLOT finished: $ORGANISM_ID"
 
-# Check if organism was closed by agent (using bd)
+# Check organism status via bd (source of truth)
 ORGANISM_STATUS=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.status')
 
 if [ "$ORGANISM_STATUS" = "closed" ]; then
-  # SUCCESS
-  echo "🎉 Organism $ORGANISM_ID completed successfully"
+  # SUCCESS - agent closed it
+  echo "🎉 $ORGANISM_ID completed"
 
   # Free slot
   jq "del(.slots[\"$SLOT\"])" .beads/autonomous-state/agent-pool.json > /tmp/ap.json
   mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
-
-  # Remove lock
   rm -f ".beads/autonomous-state/locks/${ORGANISM_ID}.lock"
 
-  echo "✓ Slot $SLOT freed"
-
 else
-  # FAILURE - agent didn't close the organism
-  echo "❌ Agent completed but organism status is: $ORGANISM_STATUS"
+  # FAILURE - agent didn't close
+  echo "❌ $ORGANISM_ID not closed (status: $ORGANISM_STATUS)"
 
-  # Check comments for checkpoint info
-  LAST_CHECKPOINT=$(bd comments "$ORGANISM_ID" --json 2>/dev/null | jq -r '.[-1].body // "No checkpoints"')
-  echo "Last checkpoint: $LAST_CHECKPOINT"
+  # Check last checkpoint via bd (one line only)
+  LAST_CHECKPOINT=$(bd comments "$ORGANISM_ID" --json 2>/dev/null | jq -r '.[-1].body // "none"' | head -c 100)
+  echo "  Last checkpoint: $LAST_CHECKPOINT..."
 
-  # Check attempt count via bd label
+  # Track attempts via bd labels
   ATTEMPT=$(bd show "$ORGANISM_ID" --json 2>/dev/null | jq -r '.labels | map(select(startswith("attempt-"))) | .[0] // "attempt-0"' | sed 's/attempt-//')
   ATTEMPT=$((ATTEMPT + 1))
-  MAX_ATTEMPTS=3
 
-  if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+  if [ "$ATTEMPT" -lt 3 ]; then
     # Retry
-    echo "Retry $ATTEMPT/$MAX_ATTEMPTS"
-
-    # Update attempt label
+    echo "  Queuing retry $ATTEMPT/3"
     bd label remove "$ORGANISM_ID" "attempt-$((ATTEMPT - 1))" 2>/dev/null || true
     bd label add "$ORGANISM_ID" "attempt-$ATTEMPT"
-
-    # Reset status to open for retry
     bd update "$ORGANISM_ID" --status open
-
   else
-    # Max attempts - mark as failed
-    echo "❌ Max attempts reached - marking as failed"
+    # Failed
+    echo "  Max attempts - marking failed"
     bd label add "$ORGANISM_ID" "failed"
-    bd comment "$ORGANISM_ID" "FAILED: Max attempts ($MAX_ATTEMPTS) reached. Manual review required."
+    bd comment "$ORGANISM_ID" "FAILED after 3 attempts"
   fi
 
   # Free slot
   jq "del(.slots[\"$SLOT\"])" .beads/autonomous-state/agent-pool.json > /tmp/ap.json
   mv /tmp/ap.json .beads/autonomous-state/agent-pool.json
-
-  # Remove lock
   rm -f ".beads/autonomous-state/locks/${ORGANISM_ID}.lock"
-
-  echo "✓ Slot $SLOT freed"
 fi
+
+# CONTEXT CHECK: If context is low, /compact NOW before next slot
 ```
+
+**DO NOT**:
+- Read full agent output via TaskOutput(block=True)
+- Expand collapsed outputs
+- Store agent outputs in variables
+
+**DO**:
+- Check bd status (external, doesn't fill context)
+- Check task completion status only (running/completed)
+- Run `/compact` if context warning appears
 
 ### STEP 4: Check Completion
 
@@ -573,15 +586,18 @@ Loop continuously:
   - **Spawn agent via Task tool** (run_in_background=true)
   - Update agent-pool.json with task_id
 
-**STEP 2: Monitor**
+**STEP 2: Monitor (Context-Aware)**
 - For each active slot:
-  - **Call TaskOutput(task_id, block=false)**
-  - Check if completed
+  - Check bd status FIRST: `bd show <id> --json | jq '.status'`
+  - Only poll TaskOutput if bd says not closed
+  - **DO NOT read/expand agent output** - fills context
+  - If context low: `/compact` immediately
 
-**STEP 3: Handle Completions**
-- Check organism status via `bd show <id> --json`
+**STEP 3: Handle Completions (Minimal Context)**
+- Check organism status via bd (source of truth)
 - If closed: success, free slot
-- If not closed: retry or mark failed via `bd label add <id> failed`
+- If not closed: check attempt label, retry or mark failed
+- **DO NOT read agent output** - just check bd
 
 **STEP 4: Check Completion**
 - Query `bd ready`, `bd list --status in_progress`
@@ -609,6 +625,7 @@ Loop continuously:
 | **Failure tracking** | bd label add failed |
 | **Progress tracking** | bd comment |
 | **Slot management** | Minimal agent-pool.json |
+| **Context management** | NEVER read agent output; check bd status; `/compact` proactively |
 
 ### 4. Tool Calls
 
