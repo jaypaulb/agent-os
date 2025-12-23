@@ -32,7 +32,7 @@ BV analyzes the dependency graph to detect priority misalignments - cases where 
 # From project root
 
 # Source BV helpers
-source agent-os/workflows/implementation/bv-helpers.md
+source .agent-os/workflows/implementation/bv-helpers.md
 
 # Get priority recommendations
 PRIORITY_RECS=$(get_priority_recommendations)

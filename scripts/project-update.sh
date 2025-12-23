@@ -142,6 +142,23 @@ parse_arguments() {
 }
 
 # -----------------------------------------------------------------------------
+# Migration Functions
+# -----------------------------------------------------------------------------
+
+# Migrate old agent-os/ folder to .agent-os/ if needed
+migrate_old_folder() {
+    if [[ -d "$PROJECT_DIR/agent-os" ]] && [[ ! -d "$PROJECT_DIR/.agent-os" ]]; then
+        # Check if it's actually an agent-os install (has config.yml)
+        if [[ -f "$PROJECT_DIR/agent-os/config.yml" ]]; then
+            print_warning "Found old 'agent-os/' folder. Migrating to '.agent-os/'..."
+            mv "$PROJECT_DIR/agent-os" "$PROJECT_DIR/.agent-os"
+            print_success "Migrated agent-os/ to .agent-os/"
+            echo ""
+        fi
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # Validation Functions
 # -----------------------------------------------------------------------------
 
@@ -150,14 +167,14 @@ validate_installations() {
     validate_base_installation
 
     # Check project installation
-    if [[ ! -f "$PROJECT_DIR/agent-os/config.yml" ]]; then
+    if [[ ! -f "$PROJECT_DIR/.agent-os/config.yml" ]]; then
         print_error "Agent OS not installed in this project"
         echo ""
         print_status "Please run project-install.sh first"
         exit 1
     fi
 
-    print_verbose "Project installation found at: $PROJECT_DIR/agent-os"
+    print_verbose "Project installation found at: $PROJECT_DIR/.agent-os"
 }
 
 # -----------------------------------------------------------------------------
@@ -236,7 +253,7 @@ update_standards() {
     while read file; do
         if [[ "$file" == standards/* ]]; then
             local source=$(get_profile_file "$PROJECT_PROFILE" "$file" "$BASE_DIR")
-            local dest="$PROJECT_DIR/agent-os/$file"
+            local dest="$PROJECT_DIR/.agent-os/$file"
 
             if [[ -f "$source" ]]; then
                 if should_skip_file "$dest" "$OVERWRITE_ALL" "$OVERWRITE_STANDARDS" "standard"; then
@@ -263,13 +280,13 @@ update_standards() {
 
     if [[ "$DRY_RUN" != "true" ]]; then
         if [[ $standards_new -gt 0 ]]; then
-            echo "✓ Added $standards_new standards in agent-os/standards"
+            echo "✓ Added $standards_new standards in .agent-os/standards"
         fi
         if [[ $standards_updated -gt 0 ]]; then
-            echo "✓ Updated $standards_updated standards in agent-os/standards"
+            echo "✓ Updated $standards_updated standards in .agent-os/standards"
         fi
         if [[ $standards_skipped -gt 0 ]]; then
-            echo -e "${YELLOW}$standards_skipped files in agent-os/standards were not updated and overwritten. To update and overwrite these, re-run with --overwrite-standards flag.${NC}"
+            echo -e "${YELLOW}$standards_skipped files in .agent-os/standards were not updated and overwritten. To update and overwrite these, re-run with --overwrite-standards flag.${NC}"
         fi
     fi
 }
@@ -288,11 +305,11 @@ update_single_agent_commands() {
             if [[ -f "$source" ]]; then
                 # Handle orchestrate-tasks specially (preserve folder structure)
                 if [[ "$file" == commands/orchestrate-tasks/orchestrate-tasks.md ]]; then
-                    local dest="$PROJECT_DIR/agent-os/commands/orchestrate-tasks/orchestrate-tasks.md"
+                    local dest="$PROJECT_DIR/.agent-os/commands/orchestrate-tasks/orchestrate-tasks.md"
                 else
-                    # Strip the single-agent/ subfolder for agent-os/commands structure
+                    # Strip the single-agent/ subfolder for .agent-os/commands structure
                     local dest_file=$(echo "$file" | sed 's/\/single-agent//')
-                    local dest="$PROJECT_DIR/agent-os/$dest_file"
+                    local dest="$PROJECT_DIR/.agent-os/$dest_file"
                 fi
 
                 if should_skip_file "$dest" "$OVERWRITE_ALL" "$OVERWRITE_COMMANDS" "command"; then
@@ -740,8 +757,8 @@ prompt_update_confirmation() {
     echo ""
     echo -e "${GREEN}✔ These will remain intact:${NC}"
     echo ""
-    echo "  - agent-os/specs/*"
-    echo "  - agent-os/product/*"
+    echo "  - .agent-os/specs/*"
+    echo "  - .agent-os/product/*"
     echo ""
     if [[ "$DRY_RUN" == "true" ]]; then
         echo -e "${YELLOW}⚠️  These WOULD BE deleted and re-installed to match the new version and configurations if this were a real update (but it's a DRY RUN):${NC}"
@@ -749,10 +766,10 @@ prompt_update_confirmation() {
         echo -e "${YELLOW}⚠️  These will be deleted and re-installed to match the new version and configurations:${NC}"
     fi
     echo ""
-    echo "  - agent-os/config.yml"
-    echo "  - agent-os/standards/"
-    if [[ "$EFFECTIVE_AGENT_OS_COMMANDS" == "true" ]] || [[ -d "$PROJECT_DIR/agent-os/commands" ]]; then
-        echo "  - agent-os/commands/"
+    echo "  - .agent-os/config.yml"
+    echo "  - .agent-os/standards/"
+    if [[ "$EFFECTIVE_AGENT_OS_COMMANDS" == "true" ]] || [[ -d "$PROJECT_DIR/.agent-os/commands" ]]; then
+        echo "  - .agent-os/commands/"
     fi
     if [[ "$EFFECTIVE_USE_CLAUDE_CODE_SUBAGENTS" == "true" ]] || [[ -d "$PROJECT_DIR/.claude/agents/agent-os" ]]; then
         echo "  - .claude/agents/agent-os/"
@@ -784,19 +801,19 @@ perform_update_cleanup() {
         echo ""
     fi
 
-    # Delete agent-os/standards/ (will be reinstalled)
-    if [[ -d "$PROJECT_DIR/agent-os/standards" ]]; then
-        print_status "Removing agent-os/standards/"
+    # Delete .agent-os/standards/ (will be reinstalled)
+    if [[ -d "$PROJECT_DIR/.agent-os/standards" ]]; then
+        print_status "Removing .agent-os/standards/"
         if [[ "$DRY_RUN" != "true" ]]; then
-            rm -rf "$PROJECT_DIR/agent-os/standards"
+            rm -rf "$PROJECT_DIR/.agent-os/standards"
         fi
     fi
 
-    # Delete agent-os/commands/ if exists
-    if [[ -d "$PROJECT_DIR/agent-os/commands" ]]; then
-        print_status "Removing agent-os/commands/"
+    # Delete .agent-os/commands/ if exists
+    if [[ -d "$PROJECT_DIR/.agent-os/commands" ]]; then
+        print_status "Removing .agent-os/commands/"
         if [[ "$DRY_RUN" != "true" ]]; then
-            rm -rf "$PROJECT_DIR/agent-os/commands"
+            rm -rf "$PROJECT_DIR/.agent-os/commands"
         fi
     fi
 
@@ -840,11 +857,11 @@ perform_update_cleanup() {
         done < <(get_profile_files "$PROJECT_PROFILE" "$BASE_DIR" "standards")
     fi
 
-    # Delete agent-os/roles/ if exists (legacy)
-    if [[ -d "$PROJECT_DIR/agent-os/roles" ]]; then
-        print_status "Removing legacy agent-os/roles/"
+    # Delete .agent-os/roles/ if exists (legacy)
+    if [[ -d "$PROJECT_DIR/.agent-os/roles" ]]; then
+        print_status "Removing legacy .agent-os/roles/"
         if [[ "$DRY_RUN" != "true" ]]; then
-            rm -rf "$PROJECT_DIR/agent-os/roles"
+            rm -rf "$PROJECT_DIR/.agent-os/roles"
         fi
     fi
 
@@ -869,6 +886,9 @@ main() {
 
     # Check if we're trying to update in the base installation directory
     check_not_base_installation
+
+    # Migrate old agent-os/ folder to .agent-os/ if needed
+    migrate_old_folder
 
     # Validate installations
     validate_installations

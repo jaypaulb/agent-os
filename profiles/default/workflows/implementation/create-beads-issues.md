@@ -5,7 +5,7 @@ This workflow auto-generates beads issues from spec.md with atomic design hierar
 ## Prerequisites
 
 - Beads must be installed: `bd --version`
-- Spec folder must exist at `agent-os/specs/[this-spec]/`
+- Spec folder must exist at `.agent-os/specs/[this-spec]/`
 - `spec.md` must be complete
 - **Beads repository initialized at PROJECT ROOT** (not in spec folder)
 
@@ -108,7 +108,7 @@ Create the parent epic for THIS phase (not the whole product):
 
 ```bash
 # Determine phase number and name from spec location
-# Example: agent-os/specs/user-authentication/ → Phase 1: User Authentication
+# Example: .agent-os/specs/user-authentication/ → Phase 1: User Authentication
 PHASE_NUM="[phase-number]"  # e.g., 1, 2, 3
 PHASE_NAME="[phase-name]"    # e.g., "User Authentication"
 SPEC_SLUG="[this-spec]"      # e.g., "user-authentication"
@@ -121,7 +121,7 @@ bd create "Phase $PHASE_NUM: $PHASE_NAME" \
   --description "$(cat <<EOF
 [1-2 sentence summary from spec.md]
 
-Spec location: agent-os/specs/$SPEC_SLUG/spec.md
+Spec location: .agent-os/specs/$SPEC_SLUG/spec.md
 Phase: $PHASE_NUM of [total-phases]
 
 This epic represents all work for Phase $PHASE_NUM.
@@ -611,7 +611,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "✅ Beads issues created for Phase $PHASE_NUM: $PHASE_NAME"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Spec: agent-os/specs/$SPEC_SLUG/spec.md"
+echo "Spec: .agent-os/specs/$SPEC_SLUG/spec.md"
 echo "Epic: $EPIC_ID"
 echo ""
 

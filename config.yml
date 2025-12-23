@@ -18,7 +18,7 @@ claude_code_commands: true
 
 # ================================================
 # Do you use other coding tools (Cursor, Windsurf, etc.)?
-# Set to true to install commands in your project's agent-os/commands/ folder
+# Set to true to install commands in your project's .agent-os/commands/ folder
 #
 # Override this default when running project-install.sh by using the flag --agent-os-commands true/false
 # ================================================

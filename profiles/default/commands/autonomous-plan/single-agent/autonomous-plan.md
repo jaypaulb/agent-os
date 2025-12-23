@@ -18,7 +18,7 @@ The loop is designed to be fully autonomous once started, with plan-product upda
 First, check if product planning files already exist:
 
 ```bash
-ls -la agent-os/product/
+ls -la .agent-os/product/
 ```
 
 ### Step 2: Handle Existing Files (First Run Only)
@@ -27,9 +27,9 @@ ls -la agent-os/product/
 
 Read existing files:
 ```bash
-cat agent-os/product/mission.md
-cat agent-os/product/roadmap.md
-cat agent-os/product/tech-stack.md
+cat .agent-os/product/mission.md
+cat .agent-os/product/roadmap.md
+cat .agent-os/product/tech-stack.md
 ```
 
 Summarize findings to user:
@@ -64,9 +64,9 @@ Delegate to the **product-planner** subagent with the user's product vision (if 
 - Tech stack choices
 
 The product-planner will create:
-- `agent-os/product/mission.md` with product vision and strategy
-- `agent-os/product/roadmap.md` with phased development plan
-- `agent-os/product/tech-stack.md` documenting tech stack choices
+- `.agent-os/product/mission.md` with product vision and strategy
+- `.agent-os/product/roadmap.md` with phased development plan
+- `.agent-os/product/tech-stack.md` documenting tech stack choices
 
 Once complete (whether updated or created), proceed immediately to PHASE 2.
 
@@ -77,7 +77,7 @@ Once complete (whether updated or created), proceed immediately to PHASE 2.
 Read the roadmap file to identify all phases for iterative spec development:
 
 ```bash
-cat agent-os/product/roadmap.md
+cat .agent-os/product/roadmap.md
 ```
 
 Parse the roadmap to extract phase titles. Typically these are organized as:
@@ -98,17 +98,29 @@ For EACH phase identified in the roadmap, execute the following sub-phases IN SE
 
 Run the shape-spec workflow for this specific phase:
 
-{{@agent-os/commands/shape-spec/shape-spec.md}}
+{{@.agent-os/commands/shape-spec/shape-spec.md}}
 
 When initializing the spec, use the phase title as the spec name (e.g., "user-authentication" for "Phase 1: User Authentication").
+
+The agent operates under efficiency requirements:
+- Token budget: 40-70K tokens (planning is complex)
+- Use Grep/Glob to explore existing specs and plans
+- Follow the planning workflow stages precisely
+- Commit/save progress after each major phase completes
 
 ### Sub-Phase B: Write Spec for Current Phase
 
 Run the write-spec workflow for this specific phase:
 
-{{@agent-os/commands/write-spec/write-spec.md}}
+{{@.agent-os/commands/write-spec/write-spec.md}}
 
-This creates `agent-os/specs/[phase-spec]/spec.md` with complete implementation details.
+This creates `.agent-os/specs/[phase-spec]/spec.md` with complete implementation details.
+
+The agent operates under efficiency requirements:
+- Token budget: 40-70K tokens (planning is complex)
+- Use Grep/Glob to explore existing specs and plans
+- Follow the specification workflow stages precisely
+- Commit/save progress after each major phase completes
 
 ### Sub-Phase C: Update Plan-Product with Learnings (Autonomous - No User Questions)
 
@@ -118,15 +130,15 @@ After completing the spec for this phase, update the plan-product documents by c
 
 1. **Read the newly created spec**:
    ```bash
-   cat agent-os/specs/[phase-spec]/spec.md
+   cat .agent-os/specs/[phase-spec]/spec.md
    ```
 
 2. **Delegate to product-planner** with the following context:
 
    Provide the product-planner with:
-   - The completed spec for this phase (`agent-os/specs/[phase-spec]/spec.md`)
-   - The current roadmap (`agent-os/product/roadmap.md`)
-   - The current tech stack (`agent-os/product/tech-stack.md`)
+   - The completed spec for this phase (`.agent-os/specs/[phase-spec]/spec.md`)
+   - The current roadmap (`.agent-os/product/roadmap.md`)
+   - The current tech stack (`.agent-os/product/tech-stack.md`)
 
    Instruct the product-planner to:
    - **Update roadmap.md**: Add technical notes to this phase's entry, mark it complete, update subsequent phases if dependencies changed
@@ -172,7 +184,7 @@ Repeat Sub-Phases A, B, C for the next phase in the roadmap.
 
 After ALL phases have been shaped, written, and plan-product has been updated, create the implementation task breakdown:
 
-{{@agent-os/commands/create-tasks/create-tasks.md}}
+{{@.agent-os/commands/create-tasks/create-tasks.md}}
 
 {{IF tracking_mode_beads}}
 This will automatically create Beads issues using the workflow defined in:
@@ -202,15 +214,15 @@ Display the following message to the user:
 Autonomous planning loop complete!
 
 **Product Planning** (updated iteratively):
-- Mission: agent-os/product/mission.md
-- Roadmap: agent-os/product/roadmap.md (✓ updated after each phase)
-- Tech Stack: agent-os/product/tech-stack.md (✓ updated after each phase)
+- Mission: .agent-os/product/mission.md
+- Roadmap: .agent-os/product/roadmap.md (✓ updated after each phase)
+- Tech Stack: .agent-os/product/tech-stack.md (✓ updated after each phase)
 
 **Phases Completed**:
 [List each phase with its spec location]
-- Phase 1: [Phase Title] → agent-os/specs/[phase-spec]/spec.md
-- Phase 2: [Phase Title] → agent-os/specs/[phase-spec]/spec.md
-- Phase 3: [Phase Title] → agent-os/specs/[phase-spec]/spec.md
+- Phase 1: [Phase Title] → .agent-os/specs/[phase-spec]/spec.md
+- Phase 2: [Phase Title] → .agent-os/specs/[phase-spec]/spec.md
+- Phase 3: [Phase Title] → .agent-os/specs/[phase-spec]/spec.md
 [etc.]
 
 **Iterative Updates**:

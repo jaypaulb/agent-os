@@ -742,7 +742,7 @@ process_standards() {
             local search_dir="standards/$base_path"
             get_profile_files "$profile" "$base_dir" "$search_dir" | while read file; do
                 if [[ "$file" == standards/* ]] && [[ "$file" == *.md ]]; then
-                    echo "@agent-os/$file"
+                    echo "@.agent-os/$file"
                 fi
             done
         else
@@ -750,7 +750,7 @@ process_standards() {
             local file_path="standards/${pattern}.md"
             local full_file=$(get_profile_file "$profile" "$file_path" "$base_dir")
             if [[ -f "$full_file" ]]; then
-                echo "@agent-os/$file_path"
+                echo "@.agent-os/$file_path"
             fi
         fi
     done | sort -u
@@ -1118,7 +1118,7 @@ check_needs_migration() {
 is_agent_os_installed() {
     local project_dir=$1
 
-    if [[ -f "$project_dir/agent-os/config.yml" ]]; then
+    if [[ -f "$project_dir/.agent-os/config.yml" ]]; then
         return 0
     else
         return 1
@@ -1130,7 +1130,7 @@ get_project_config() {
     local project_dir=$1
     local key=$2
 
-    get_yaml_value "$project_dir/agent-os/config.yml" "$key" ""
+    get_yaml_value "$project_dir/.agent-os/config.yml" "$key" ""
 }
 
 # -----------------------------------------------------------------------------
@@ -1158,8 +1158,8 @@ validate_base_installation() {
 
 # Check if current directory is the base installation directory
 check_not_base_installation() {
-    if [[ -f "$PROJECT_DIR/agent-os/config.yml" ]]; then
-        if grep -q "base_install: true" "$PROJECT_DIR/agent-os/config.yml"; then
+    if [[ -f "$PROJECT_DIR/.agent-os/config.yml" ]]; then
+        if grep -q "base_install: true" "$PROJECT_DIR/.agent-os/config.yml"; then
             echo ""
             print_error "Cannot install Agent OS in base installation directory"
             echo ""
@@ -1279,7 +1279,7 @@ write_project_config() {
     local use_claude_code_subagents=$4
     local agent_os_commands=$5
     local standards_as_claude_code_skills=$6
-    local dest="$PROJECT_DIR/agent-os/config.yml"
+    local dest="$PROJECT_DIR/.agent-os/config.yml"
 
     local config_content="version: $version
 last_compiled: $(date '+%Y-%m-%d %H:%M:%S')
@@ -1409,8 +1409,8 @@ create_standard_skill() {
         return 1
     fi
 
-    # Prepend agent-os/ to the standards file path for the file reference
-    local standard_file_path_with_prefix="agent-os/$standards_file"
+    # Prepend .agent-os/ to the standards file path for the file reference
+    local standard_file_path_with_prefix=".agent-os/$standards_file"
 
     # Read template and replace placeholders
     local skill_content=$(cat "$template_file")

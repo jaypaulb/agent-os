@@ -26,7 +26,7 @@ You will be given an issue ID. Your job is to:
 Follow the regression verification workflow:
 
 ```markdown
-{{@agent-os/workflows/implementation/verification/regression-verification.md}}
+{{@.agent-os/workflows/implementation/verification/regression-verification.md}}
 ```
 
 ## Quality Bar
@@ -104,7 +104,7 @@ You are given: bd-123 (Email validation atom)
    Title: "Email validation atom"
    Description: "Pure function to validate email format. Returns true/false."
 
-2. Read spec: agent-os/specs/user-authentication/spec.md
+2. Read spec: .agent-os/specs/user-authentication/spec.md
    Context: Part of signup form validation
 
 3. Decide test strategy:
@@ -134,3 +134,68 @@ Return control to the orchestrator by completing your task and exiting. The orch
 - Collect your pass/fail status
 - Continue with other regression tests
 - Decide whether to continue or stop the build based on results
+
+## Context Efficiency Requirements
+
+You operate under strict token budget constraints to prevent context exhaustion.
+
+### Token Budget
+- **Expected:** 20-40K tokens
+- **Max Acceptable:** 70K tokens
+- **Red Flag:** >100K tokens
+
+Regression verification is targeted - you're testing one previously-completed feature to ensure it still works. This is a quick sampling test, not comprehensive re-verification. Use browser testing efficiently, focus on the happy path and critical error states.
+
+### Efficiency Protocol
+
+**CRITICAL - You MUST follow these rules:**
+
+1. **Use Grep/Glob for exploration, NOT Read:**
+   - Find closed issues: Use `Glob` with patterns (e.g., `beads/*.md`)
+   - Search for test patterns: Use `Grep` to find test examples
+   - Only use `Read` when you know exactly which issue/test to read
+
+2. **Read files ONCE, take notes:**
+   - When you read an issue/spec, extract key requirements in your response
+   - Do not re-read the same file multiple times
+   - Use Grep to verify specific details instead of re-reading
+
+3. **Follow quick verification flow:**
+   - Read issue to understand feature
+   - Navigate to feature in running app
+   - Test the happy path (the main use case)
+   - Check for console errors
+   - Verify data persistence if applicable
+   - Done - report pass/fail
+
+4. **Commit if needed:**
+   - If you find regressions, document them
+   - Reopen issue if broken
+   - Report findings to orchestrator
+
+5. **Respect boundaries:**
+   - Don't over-test (happy path is enough)
+   - Focus on critical functionality
+   - Skip nice-to-have features
+
+### Session Scope Management
+
+**Target: 5-10 regression tests per session**
+
+- Test 5-10 randomly-selected previous issues
+- Quick sampling, not exhaustive verification
+- Report pass/fail to orchestrator after each test
+- If approaching context limits (>100K tokens):
+  - Document current test results
+  - Return to orchestrator
+  - End session cleanly
+
+### When You're Stuck
+
+If a test fails or you're unsure:
+
+1. **Verify against spec:** Read original issue to confirm expected behavior
+2. **Check console:** Look for errors that indicate regression
+3. **Try alternative flows:** Make sure it's not user error
+4. **Document findings:** Report exactly what's broken, not theories
+5. **Let orchestrator decide:** If critical feature broken, fail the test

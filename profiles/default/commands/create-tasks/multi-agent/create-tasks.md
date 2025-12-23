@@ -10,7 +10,7 @@ First, find all specs in the project:
 # From project root
 
 # Find all spec folders
-SPEC_FOLDERS=$(find agent-os/specs -mindepth 1 -maxdepth 1 -type d)
+SPEC_FOLDERS=$(find .agent-os/specs -mindepth 1 -maxdepth 1 -type d)
 
 echo "Found specs:"
 for spec_folder in $SPEC_FOLDERS; do
@@ -58,7 +58,7 @@ for spec_folder in $SPEC_FOLDERS; do
         # 4. Set blocking dependencies
 
         # Source and run the workflow
-        # {{@agent-os/workflows/implementation/create-beads-issues.md}}
+        # {{@.agent-os/workflows/implementation/create-beads-issues.md}}
 
         echo "✓ Created Beads issues for $spec_name"
     fi
@@ -149,7 +149,7 @@ Output the following to inform the user:
 
 ```bash
 # Count specs with tasks.md
-TASK_COUNT=$(find agent-os/specs -name "tasks.md" | wc -l)
+TASK_COUNT=$(find .agent-os/specs -name "tasks.md" | wc -l)
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -159,7 +159,7 @@ echo ""
 echo "Total specs: $TASK_COUNT"
 echo ""
 echo "Specs with tasks.md:"
-find agent-os/specs -name "tasks.md" | while read -r file; do
+find .agent-os/specs -name "tasks.md" | while read -r file; do
     spec_name=$(basename "$(dirname "$file")")
     echo "  • $spec_name"
 done

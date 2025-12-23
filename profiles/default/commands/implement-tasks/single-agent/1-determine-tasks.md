@@ -9,7 +9,7 @@ Query beads to find ready work using execution planning (from project root):
 
 ```bash
 # Source BV helpers
-source agent-os/workflows/implementation/bv-helpers.md
+source .agent-os/workflows/implementation/bv-helpers.md
 
 # Check if bv is available
 if bv_available; then
@@ -82,7 +82,7 @@ Should we proceed with the recommended task, all ready work, or specify which is
 ```
 
 {{ELSE}}
-Read `agent-os/specs/[this-spec]/tasks.md` to review the available task groups, then output the following message to the user and WAIT for their response:
+Read `.agent-os/specs/[this-spec]/tasks.md` to review the available task groups, then output the following message to the user and WAIT for their response:
 
 ```
 Should we proceed with implementation of all task groups in tasks.md?

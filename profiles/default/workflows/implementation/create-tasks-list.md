@@ -12,15 +12,15 @@
 ### Step 1: Analyze Spec & Requirements
 
 Read each of these files (whichever are available) and analyze them to understand the requirements for this feature implementation:
-- `agent-os/specs/[this-spec]/spec.md`
-- `agent-os/specs/[this-spec]/planning/requirements.md`
+- `.agent-os/specs/[this-spec]/spec.md`
+- `.agent-os/specs/[this-spec]/planning/requirements.md`
 
 Use your learnings to inform the tasks list and groupings you will create in the next step.
 
 
 ### Step 2: Create Tasks Breakdown
 
-Generate `agent-os/specs/[current-spec]/tasks.md`.
+Generate `.agent-os/specs/[current-spec]/tasks.md`.
 
 **Important**: The exact tasks, task groups, and organization will vary based on the feature's specific requirements. The following is an example format - adapt the content of the tasks list to match what THIS feature actually needs.
 

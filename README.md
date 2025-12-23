@@ -80,7 +80,7 @@ Agent-OS uses **unified project-level issue tracking** via Beads:
 project/
 ├── .beads/               ← All issues here (project root)
 │   └── issues.jsonl
-├── agent-os/
+├── .agent-os/
 │   ├── product/          ← Product docs (mission, roadmap, tech-stack)
 │   └── specs/
 │       ├── user-auth/    ← Spec docs only (spec.md, requirements.md)

@@ -11,7 +11,7 @@ Generate implementation summary using BV diff tracking (from project root):
 
 ```bash
 # Source BV helpers
-source agent-os/workflows/implementation/bv-helpers.md
+source .agent-os/workflows/implementation/bv-helpers.md
 
 if bv_available; then
     echo ""
@@ -72,7 +72,7 @@ Would you like to continue with the remaining work?
 IF all tasks are now marked as done (with `- [x]`) in tasks.md, display this message to user:
 
 ```
-All tasks have been implemented: `agent-os/specs/[this-spec]/tasks.md`.
+All tasks have been implemented: `.agent-os/specs/[this-spec]/tasks.md`.
 
 NEXT STEP 👉 Run `3-verify-implementation.md` to verify the implementation.
 ```

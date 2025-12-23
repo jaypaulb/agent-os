@@ -31,7 +31,7 @@ fi
 echo "✓ Beads initialized at project root"
 
 # Source BV helpers
-source agent-os/profiles/default/workflows/implementation/bv-helpers.md
+source .agent-os/profiles/default/workflows/implementation/bv-helpers.md
 
 # Get all phase epics
 if bv_available; then
@@ -73,6 +73,51 @@ If you don't have one yet, then run any of these commands first:
 /create-tasks
 ```
 {{ENDIF tracking_mode_beads}}
+
+### BEFORE PARALLEL EXECUTION: Enrich Ready Work
+
+Before analyzing parallel execution, enrich all ready issues to prevent context exhaustion.
+
+**Goal:** Add TOKEN-EFFICIENT WORKFLOW comments to all ready issues before spawning agents.
+
+Check for TOKEN-EFFICIENT WORKFLOW in each ready issue:
+
+{{IF tracking_mode_beads}}
+For each ready issue from `bd ready`, run:
+```bash
+bd show <issue_id> | grep -q "TOKEN-EFFICIENT WORKFLOW:" || \
+  echo "⚠️  Issue <issue_id> lacks TOKEN-EFFICIENT WORKFLOW - needs enrichment"
+```
+
+**If issue lacks TOKEN-EFFICIENT WORKFLOW:**
+1. Check for scope red flags:
+   - Description <50 characters (too vague)
+   - Mentions >8 files (too broad)
+   - No clear acceptance criteria
+
+2. If red flags: Mark as blocked and skip for now
+   ```bash
+   bd comment <issue_id> "❌ BLOCKED - needs breakdown"
+   bd update <issue_id> --status blocked
+   ```
+
+3. If no red flags: Enrich with TOKEN-EFFICIENT WORKFLOW comment
+   ```bash
+   bd comment <issue_id> "TOKEN-EFFICIENT WORKFLOW:
+
+   FILES TO MODIFY:
+   - [inferred files]
+
+   APPROACH:
+   1. [concrete steps]
+
+   DO NOT READ: [boundaries]
+
+   EXPECTED: [N] tool calls, <[X]K tokens"
+   ```
+{{ENDIF tracking_mode_beads}}
+
+---
 
 ### NEXT: Analyze Parallel Execution Opportunities
 
@@ -160,10 +205,10 @@ if bv_available; then
              "    Phase: \([.labels[] | select(startswith("phase-"))] | join(", "))",
              "    \(.reasoning)",
              "")
-        ' | tee "agent-os/product/priority-analysis.txt"
+        ' | tee ".agent-os/product/priority-analysis.txt"
 
         echo ""
-        echo "Review agent-os/product/priority-analysis.txt for full details."
+        echo "Review .agent-os/product/priority-analysis.txt for full details."
         echo ""
 
         # Ask user if they want to apply high-confidence updates
@@ -219,8 +264,8 @@ else
 fi
 
 # Output to product directory for interactive mode
-ORCHESTRATION_FILE="agent-os/product/orchestration.yml"
-mkdir -p agent-os/product
+ORCHESTRATION_FILE=".agent-os/product/orchestration.yml"
+mkdir -p .agent-os/product
 
 # Create orchestration file
 cat > "$ORCHESTRATION_FILE" <<EOF
@@ -238,14 +283,14 @@ echo "✓ Created $ORCHESTRATION_FILE with $(echo "$ORGANISMS" | jq '. | length'
 ```
 
 {{ELSE}}
-Create `agent-os/product/orchestration.yml` by discovering all specs in agent-os/specs/:
+Create `.agent-os/product/orchestration.yml` by discovering all specs in .agent-os/specs/:
 
 ```bash
 # Find all spec folders with tasks.md
-SPEC_FOLDERS=$(find agent-os/specs -name "tasks.md" -exec dirname {} \;)
+SPEC_FOLDERS=$(find .agent-os/specs -name "tasks.md" -exec dirname {} \;)
 
 # Create orchestration file
-cat > agent-os/product/orchestration.yml <<EOF
+cat > .agent-os/product/orchestration.yml <<EOF
 # Multi-Phase Orchestration Plan
 # Generated: $(date)
 specs:
@@ -255,18 +300,18 @@ EOF
 for spec_folder in $SPEC_FOLDERS; do
     spec_name=$(basename "$spec_folder")
 
-    echo "  - spec: $spec_name" >> agent-os/product/orchestration.yml
-    echo "    task_groups:" >> agent-os/product/orchestration.yml
+    echo "  - spec: $spec_name" >> .agent-os/product/orchestration.yml
+    echo "    task_groups:" >> .agent-os/product/orchestration.yml
 
     # Extract task group names from tasks.md
     grep "^####" "$spec_folder/tasks.md" | sed 's/#### //' | while read -r task_group; do
-        echo "      - name: $task_group" >> agent-os/product/orchestration.yml
+        echo "      - name: $task_group" >> .agent-os/product/orchestration.yml
     done
 done
 
 echo ""
-echo "✓ Created agent-os/product/orchestration.yml for all specs"
-cat agent-os/product/orchestration.yml
+echo "✓ Created .agent-os/product/orchestration.yml for all specs"
+cat .agent-os/product/orchestration.yml
 ```
 {{ENDIF tracking_mode_beads}}
 
@@ -647,7 +692,7 @@ yq eval '.beads[]' "$ORCHESTRATION_FILE" -o json | jq -c '.' | while read -r org
     # Get organism details from beads
     ORGANISM_DATA=$(bd show "$ORGANISM_ID" --json)
     SPEC_LABEL=$(echo "$ORGANISM_DATA" | jq -r '.labels[] | select(startswith("phase-") | not)')
-    SPEC_PATH="agent-os/specs/$SPEC_LABEL"
+    SPEC_PATH=".agent-os/specs/$SPEC_LABEL"
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -665,8 +710,8 @@ done
 
 For each organism delegation, provide the subagent with:
 - The organism issue ID from Beads
-- The spec file: `agent-os/specs/[spec-label]/spec.md`
-- The requirements: `agent-os/specs/[spec-label]/planning/requirements.md`
+- The spec file: `.agent-os/specs/[spec-label]/spec.md`
+- The requirements: `.agent-os/specs/[spec-label]/planning/requirements.md`
 - Instruct subagent to:
   - Implement the organism and its child molecules/atoms
   - Update Beads issue status as work progresses
@@ -675,17 +720,17 @@ For each organism delegation, provide the subagent with:
 {{ELSE}}
 **For tasks.md mode:** Loop through each spec's task groups.
 
-For EACH spec in `agent-os/product/orchestration.yml`:
+For EACH spec in `.agent-os/product/orchestration.yml`:
   - Read that spec's `tasks.md` file
   - Loop through each task group
   - Delegate to the assigned subagent specified in orchestration.yml
 
 For each delegation, provide the subagent with:
 - The task group (including the parent task and all sub-tasks)
-- The spec file: `agent-os/specs/[spec-slug]/spec.md`
+- The spec file: `.agent-os/specs/[spec-slug]/spec.md`
 - Instruct subagent to:
   - Perform their implementation
-  - Check off the task and sub-task(s) in `agent-os/specs/[spec-slug]/tasks.md`
+  - Check off the task and sub-task(s) in `.agent-os/specs/[spec-slug]/tasks.md`
 {{ENDIF tracking_mode_beads}}
 
 {{UNLESS standards_as_claude_code_skills}}
@@ -702,14 +747,14 @@ Provide all of the above to the subagent when delegating tasks for it to impleme
 
 Now we must generate an ordered series of prompt texts, which will be used to direct the implementation of each task group listed in `orchestration.yml`.
 
-Follow these steps to generate this spec's ordered series of prompts texts, each in its own .md file located in `agent-os/specs/[this-spec]/implementation/prompts/`.
+Follow these steps to generate this spec's ordered series of prompts texts, each in its own .md file located in `.agent-os/specs/[this-spec]/implementation/prompts/`.
 
-LOOP through EACH task group in `agent-os/specs/[this-spec]/tasks.md` and for each, use the following workflow to generate a markdown file with prompt text for each task group:
+LOOP through EACH task group in `.agent-os/specs/[this-spec]/tasks.md` and for each, use the following workflow to generate a markdown file with prompt text for each task group:
 
 #### Step 1. Create the prompt markdown file
 
 Create the prompt markdown file using this naming convention:
-`agent-os/specs/[this-spec]/implementation/prompts/[task-group-number]-[task-group-title].md`.
+`.agent-os/specs/[this-spec]/implementation/prompts/[task-group-number]-[task-group-title].md`.
 
 For example, if the 3rd task group in tasks.md is named "Comment System" then create `3-comment-system.md`.
 
@@ -738,11 +783,11 @@ We're continuing our implementation of [spec-title] by implementing task group n
 
 ## Understand the context
 
-Read @agent-os/specs/[this-spec]/spec.md to understand the context for this spec and where the current task fits into it.
+Read @.agent-os/specs/[this-spec]/spec.md to understand the context for this spec and where the current task fits into it.
 
 Also read these further context and reference:
-- @agent-os/specs/[this-spec/]/planning/requirements.md
-- @agent-os/specs/[this-spec/]/planning/visuals
+- @.agent-os/specs/[this-spec/]/planning/requirements.md
+- @.agent-os/specs/[this-spec/]/planning/visuals
 
 ## Perform the implementation
 
@@ -770,6 +815,6 @@ Use the following list of prompts to direct the implementation of each task grou
 
 Input those prompts into this chat one-by-one or queue them to run in order.
 
-Progress will be tracked in `agent-os/specs/[this-spec]/tasks.md`
+Progress will be tracked in `.agent-os/specs/[this-spec]/tasks.md`
 ```
 {{ENDUNLESS use_claude_code_subagents}}

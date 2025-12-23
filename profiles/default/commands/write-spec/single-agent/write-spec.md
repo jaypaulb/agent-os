@@ -1,5 +1,11 @@
 Now that we've initiated and planned the details for a new spec, we will now proceed with drafting the specification document, following these instructions:
 
+**EFFICIENCY REQUIREMENTS:**
+- Token budget: 50-70K (write-spec is detailed technical work)
+- Use Grep/Glob to explore existing code patterns
+- Read files ONCE, extract key information
+- Commit/save progress after each phase
+
 {{workflows/specification/write-spec}}
 
 ## Display confirmation and next step
@@ -7,7 +13,7 @@ Now that we've initiated and planned the details for a new spec, we will now pro
 Display the following message to the user:
 
 ```
-The spec has been created at `agent-os/specs/[this-spec]/spec.md`.
+The spec has been created at `.agent-os/specs/[this-spec]/spec.md`.
 
 Review it closely to ensure everything aligns with your vision and requirements.
 

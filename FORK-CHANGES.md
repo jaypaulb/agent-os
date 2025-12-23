@@ -256,7 +256,7 @@ Integrated `bv` (beads viewer) robot protocol to provide deterministic graph int
 
 ### Spec Configuration Update
 
-**`agent-os/specs/[spec-name]/spec-config.yml`** - Added field:
+**`.agent-os/specs/[spec-name]/spec-config.yml`** - Added field:
 ```yaml
 tracking_mode: beads
 created: 2025-12-15T10:30:00Z
@@ -502,11 +502,11 @@ Added conditional to query beads for ready work:
 {{IF tracking_mode_beads}}
 Query beads to find ready work:
 ```bash
-cd agent-os/specs/[this-spec]/
+cd .agent-os/specs/[this-spec]/
 bd ready
 ```
 {{ELSE}}
-Read `agent-os/specs/[this-spec]/tasks.md`...
+Read `.agent-os/specs/[this-spec]/tasks.md`...
 {{ENDIF tracking_mode_beads}}
 ```
 
@@ -616,7 +616,7 @@ Available conditionals:
 
 ## Per-Spec Configuration
 
-Each spec can have its own tracking mode via `agent-os/specs/[spec-name]/spec-config.yml`:
+Each spec can have its own tracking mode via `.agent-os/specs/[spec-name]/spec-config.yml`:
 
 ```yaml
 tracking_mode: beads  # or tasks_md

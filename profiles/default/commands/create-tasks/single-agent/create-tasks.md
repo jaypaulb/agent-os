@@ -1,13 +1,19 @@
 I want you to create a tasks breakdown from a given spec and requirements for a new feature using the following MULTI-PHASE process and instructions.
 
+**EFFICIENCY REQUIREMENTS:**
+- Token budget: 30-50K (create-tasks is deterministic task extraction)
+- Use Grep/Glob to explore existing code patterns
+- Read spec ONCE, extract key information
+- Commit/save progress after each phase
+
 Carefully read and execute the instructions in the following files IN SEQUENCE, following their numbered file names.  Only proceed to the next numbered instruction file once the previous numbered instruction has been executed.
 
 Instructions to follow in sequence:
 
-{{PHASE 1: @agent-os/commands/create-tasks/1-get-spec-requirements.md}}
+{{PHASE 1: @.agent-os/commands/create-tasks/1-get-spec-requirements.md}}
 
 {{IF tracking_mode_beads}}
-{{PHASE 2: @agent-os/workflows/implementation/create-beads-issues.md}}
+{{PHASE 2: @.agent-os/workflows/implementation/create-beads-issues.md}}
 {{ELSE}}
-{{PHASE 2: @agent-os/commands/create-tasks/2-create-tasks-list.md}}
+{{PHASE 2: @.agent-os/commands/create-tasks/2-create-tasks-list.md}}
 {{ENDIF tracking_mode_beads}}

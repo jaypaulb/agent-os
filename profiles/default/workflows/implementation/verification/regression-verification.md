@@ -41,7 +41,7 @@ echo "Tags: $TAGS"
 echo ""
 
 # Read spec for context
-if [ -f "agent-os/specs/$SPEC_LABEL/spec.md" ]; then
+if [ -f ".agent-os/specs/$SPEC_LABEL/spec.md" ]; then
   echo "Reading spec for context..."
   # Agent should read spec.md to understand feature
 fi
@@ -173,8 +173,8 @@ Capture visual state for review:
 echo "Capturing screenshot..."
 
 # Save to verification directory
-mkdir -p agent-os/specs/$SPEC_LABEL/verification/screenshots 2>/dev/null || true
-SCREENSHOT_PATH="agent-os/specs/$SPEC_LABEL/verification/screenshots/${ISSUE_ID}-$(date +%Y%m%d-%H%M%S).png"
+mkdir -p .agent-os/specs/$SPEC_LABEL/verification/screenshots 2>/dev/null || true
+SCREENSHOT_PATH=".agent-os/specs/$SPEC_LABEL/verification/screenshots/${ISSUE_ID}-$(date +%Y%m%d-%H%M%S).png"
 
 # Use Playwright to capture
 # mcp__playwright__browser_take_screenshot --filename "$SCREENSHOT_PATH"

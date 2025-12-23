@@ -407,7 +407,7 @@ echo "Ready for next session:"
 bd ready --count 5
 
 echo ""
-echo "To resume: cd agent-os/specs/[this-spec]/ && bd ready"
+echo "To resume: cd .agent-os/specs/[this-spec]/ && bd ready"
 ```
 
 ---

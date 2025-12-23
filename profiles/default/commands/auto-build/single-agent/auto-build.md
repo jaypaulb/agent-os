@@ -61,7 +61,7 @@ if [ "$ISSUE_COUNT" -eq 0 ]; then
   echo "  • Specs exist but /create-tasks hasn't run yet"
   echo ""
   echo "Solutions:"
-  echo "  1. Check if specs exist: ls agent-os/specs/"
+  echo "  1. Check if specs exist: ls .agent-os/specs/"
   echo "  2. If specs exist, run: /create-tasks"
   echo "  3. If no specs, run: /autonomous-plan"
   echo "  4. If autonomous-plan failed midway, resume it or run /create-tasks manually"
@@ -100,7 +100,7 @@ Before starting the build, check what changed since the last build and verify no
 # cd /path/to/project
 
 # Source BV helpers (adjust path to workflow location)
-source agent-os/workflows/implementation/bv-helpers.md
+source .agent-os/workflows/implementation/bv-helpers.md
 
 if bv_available; then
     echo ""
@@ -173,7 +173,7 @@ fi
 The autonomous harness is managed as a dependency. Check if it's installed, and install/update if needed:
 
 ```bash
-# Read harness config from agent-os/config.yml
+# Read harness config from .agent-os/config.yml
 HARNESS_REPO=$(grep "autonomous_harness_repo:" ~/agent-os/config.yml | cut -d' ' -f2)
 HARNESS_BRANCH=$(grep "autonomous_harness_branch:" ~/agent-os/config.yml | cut -d' ' -f2)
 HARNESS_PATH="$(pwd)/.harness"
@@ -401,7 +401,7 @@ if [ ! -f ".beads_project.json" ]; then
 
   if [ "$EPIC_COUNT" -gt 1 ]; then
     # Multi-phase project
-    PROJECT_NAME=$(cat agent-os/product/mission.md 2>/dev/null | head -1 | sed 's/^# //' || echo "Multi-Phase Project")
+    PROJECT_NAME=$(cat .agent-os/product/mission.md 2>/dev/null | head -1 | sed 's/^# //' || echo "Multi-Phase Project")
     EPIC_ID="multi-phase"
   else
     # Single-phase project

@@ -185,7 +185,7 @@ install_standards() {
     while read file; do
         if [[ "$file" == standards/* ]]; then
             local source=$(get_profile_file "$EFFECTIVE_PROFILE" "$file" "$BASE_DIR")
-            local dest="$PROJECT_DIR/agent-os/$file"
+            local dest="$PROJECT_DIR/.agent-os/$file"
 
             if [[ -f "$source" ]]; then
                 local installed_file=$(copy_file "$source" "$dest")
@@ -199,7 +199,7 @@ install_standards() {
 
     if [[ "$DRY_RUN" != "true" ]]; then
         if [[ $standards_count -gt 0 ]]; then
-            echo "✓ Installed $standards_count standards in agent-os/standards"
+            echo "✓ Installed $standards_count standards in .agent-os/standards"
         fi
     fi
 }
@@ -343,11 +343,11 @@ install_agent_os_commands() {
             if [[ -f "$source" ]]; then
                 # Handle orchestrate-tasks specially (preserve folder structure)
                 if [[ "$file" == commands/orchestrate-tasks/orchestrate-tasks.md ]]; then
-                    local dest="$PROJECT_DIR/agent-os/commands/orchestrate-tasks/orchestrate-tasks.md"
+                    local dest="$PROJECT_DIR/.agent-os/commands/orchestrate-tasks/orchestrate-tasks.md"
                 else
                     # Extract command name and preserve numbering
                     local cmd_path=$(echo "$file" | sed 's|commands/\([^/]*\)/single-agent/\(.*\)|\1/\2|')
-                    local dest="$PROJECT_DIR/agent-os/commands/$cmd_path"
+                    local dest="$PROJECT_DIR/.agent-os/commands/$cmd_path"
                 fi
 
                 # Compile with workflow and standards injection and PHASE embedding
@@ -367,14 +367,14 @@ install_agent_os_commands() {
     fi
 }
 
-# Create agent-os folder structure
+# Create .agent-os folder structure
 create_agent_os_folder() {
     if [[ "$DRY_RUN" != "true" ]]; then
-        print_status "Installing agent-os folder"
+        print_status "Installing .agent-os folder"
     fi
 
-    # Create the main agent-os folder
-    ensure_dir "$PROJECT_DIR/agent-os"
+    # Create the main .agent-os folder
+    ensure_dir "$PROJECT_DIR/.agent-os"
 
     # Create the configuration file
     local config_file=$(write_project_config "$EFFECTIVE_VERSION" "$EFFECTIVE_PROFILE" \
@@ -385,8 +385,8 @@ create_agent_os_folder() {
     fi
 
     if [[ "$DRY_RUN" != "true" ]]; then
-        echo "✓ Created agent-os folder"
-        echo "✓ Created agent-os project configuration"
+        echo "✓ Created .agent-os folder"
+        echo "✓ Created .agent-os project configuration"
     fi
 }
 
@@ -490,7 +490,7 @@ perform_installation() {
 handle_reinstallation() {
     print_section "Re-installation"
 
-    print_warning "This will DELETE your current agent-os/ folder and reinstall from scratch."
+    print_warning "This will DELETE your current .agent-os/ folder and reinstall from scratch."
     echo ""
 
     # Check for Claude Code files
@@ -510,7 +510,7 @@ handle_reinstallation() {
 
     if [[ "$DRY_RUN" != "true" ]]; then
         print_status "Removing existing installation..."
-        rm -rf "$PROJECT_DIR/agent-os"
+        rm -rf "$PROJECT_DIR/.agent-os"
         rm -rf "$PROJECT_DIR/.claude/agents/agent-os"
         rm -rf "$PROJECT_DIR/.claude/commands/agent-os"
         echo "✓ Existing installation removed"

@@ -25,7 +25,7 @@ Query beads to find ready work for this spec:
 # From project root (where .beads/ is located)
 
 # Source BV helpers
-source agent-os/workflows/implementation/bv-helpers.md
+source .agent-os/workflows/implementation/bv-helpers.md
 
 # Get spec name
 SPEC_NAME="[this-spec-slug]"
@@ -55,7 +55,7 @@ Should we proceed with all ready work, or specify which issues to implement?
 ```
 
 {{ELSE}}
-Read `agent-os/specs/[this-spec]/tasks.md` to review the available task groups, then output the following message to the user and WAIT for their response:
+Read `.agent-os/specs/[this-spec]/tasks.md` to review the available task groups, then output the following message to the user and WAIT for their response:
 
 ```
 Should we proceed with implementation of all task groups in tasks.md?
@@ -69,16 +69,31 @@ If not, then please specify which task(s) to implement.
 Delegate to the **implementer** subagent to implement the specified task group(s):
 
 Provide to the subagent:
-- The specific task group(s) from `agent-os/specs/[this-spec]/tasks.md` including the parent task, all sub-tasks, and any sub-bullet points
-- The path to this spec's documentation: `agent-os/specs/[this-spec]/spec.md`
-- The path to this spec's requirements: `agent-os/specs/[this-spec]/planning/requirements.md`
-- The path to this spec's visuals (if any): `agent-os/specs/[this-spec]/planning/visuals`
+- The specific task group(s) from `.agent-os/specs/[this-spec]/tasks.md` including the parent task, all sub-tasks, and any sub-bullet points
+- The path to this spec's documentation: `.agent-os/specs/[this-spec]/spec.md`
+- The path to this spec's requirements: `.agent-os/specs/[this-spec]/planning/requirements.md`
+- The path to this spec's visuals (if any): `.agent-os/specs/[this-spec]/planning/visuals`
+
+**CRITICAL EFFICIENCY REQUIREMENTS:**
+- Agent has 60K token budget (for direct mode) or 80K (for coordination mode)
+- Must use Grep/Glob for exploration, not reading entire files
+- Must read files ONCE and take notes
+- Must commit incrementally every 20-30K tokens
+- Must follow TOKEN-EFFICIENT WORKFLOW from spec comments exactly
 
 Instruct the subagent to:
-1. Analyze the provided spec.md, requirements.md, and visuals (if any)
-2. Analyze patterns in the codebase according to its built-in workflow
-3. Implement the assigned task group according to requirements and standards
-4. Update `agent-os/specs/[this-spec]/tasks.md` to mark completed tasks with `- [x]`
+1. **EFFICIENCY FIRST:** Use token budget of 60K (direct) or 80K (coordination), use Grep/Glob for exploration
+2. Analyze the provided spec.md, requirements.md, and visuals (if any)
+3. Analyze patterns in the codebase according to its built-in workflow
+4. Implement the assigned task group according to requirements and standards
+5. **Commit incrementally** after each major step (every 20-30K tokens)
+6. Update `.agent-os/specs/[this-spec]/tasks.md` to mark completed tasks with `- [x]`
+
+**CRITICAL:** Provide efficiency requirements in the prompt:
+- "You have a 60K token budget (for direct mode) or 80K (for coordination mode)"
+- "Use Grep/Glob to explore, Read only specific files"
+- "Commit after each atomic design level completes"
+- "Follow atomic workflow precisely, don't skip levels"
 
 ### PHASE 3: Produce the final verification report
 
@@ -116,7 +131,7 @@ Assuming all tasks are marked complete, then delegate to the **implementation-ve
 {{ENDIF tracking_mode_beads}}
 
 Provide to the subagent the following:
-- The path to this spec: `agent-os/specs/[this-spec]`
+- The path to this spec: `.agent-os/specs/[this-spec]`
 Instruct the subagent to do the following:
   1. Run all of its final verifications according to its built-in workflow
-  2. Produce the final verification report in `agent-os/specs/[this-spec]/verifications/final-verification.md`.
+  2. Produce the final verification report in `.agent-os/specs/[this-spec]/verifications/final-verification.md`.

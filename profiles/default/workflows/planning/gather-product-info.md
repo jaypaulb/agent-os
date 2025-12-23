@@ -2,10 +2,10 @@ Collect comprehensive product information from the user:
 
 ```bash
 # Check if product folder already exists
-if [ -d "agent-os/product" ]; then
+if [ -d ".agent-os/product" ]; then
     echo "Product documentation already exists. Review existing files or start fresh?"
     # List existing product files
-    ls -la agent-os/product/
+    ls -la .agent-os/product/
 fi
 ```
 

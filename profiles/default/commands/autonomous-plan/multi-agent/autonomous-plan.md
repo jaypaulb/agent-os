@@ -18,7 +18,7 @@ The loop is designed to be fully autonomous once started, with plan-product upda
 First, check if product planning files already exist:
 
 ```bash
-ls -la agent-os/product/
+ls -la .agent-os/product/
 ```
 
 ### Step 2: Handle Existing Files (First Run Only)
@@ -27,9 +27,9 @@ ls -la agent-os/product/
 
 Read existing files:
 ```bash
-cat agent-os/product/mission.md
-cat agent-os/product/roadmap.md
-cat agent-os/product/tech-stack.md
+cat .agent-os/product/mission.md
+cat .agent-os/product/roadmap.md
+cat .agent-os/product/tech-stack.md
 ```
 
 Summarize findings to user:
@@ -64,9 +64,9 @@ Delegate to the **product-planner** subagent with the user's product vision (if 
 - Tech stack choices
 
 The product-planner will create:
-- `agent-os/product/mission.md` with product vision and strategy
-- `agent-os/product/roadmap.md` with phased development plan
-- `agent-os/product/tech-stack.md` documenting tech stack choices
+- `.agent-os/product/mission.md` with product vision and strategy
+- `.agent-os/product/roadmap.md` with phased development plan
+- `.agent-os/product/tech-stack.md` documenting tech stack choices
 
 Once complete (whether updated or created), proceed immediately to PHASE 2.
 
@@ -77,7 +77,7 @@ Once complete (whether updated or created), proceed immediately to PHASE 2.
 Read the roadmap file to identify all phases:
 
 ```bash
-cat agent-os/product/roadmap.md
+cat .agent-os/product/roadmap.md
 ```
 
 Parse the roadmap to extract phase information. Typically organized as:
@@ -134,14 +134,14 @@ Use the Task tool with:
   Create specification for Phase [#]: [Feature Name]
 
   1. Run shape-spec:
-     {{@agent-os/commands/shape-spec/shape-spec.md}}
+     {{@.agent-os/commands/shape-spec/shape-spec.md}}
 
      Initialize spec with name: "[phase-name-slug]"
 
   2. Run write-spec:
-     {{@agent-os/commands/write-spec/write-spec.md}}
+     {{@.agent-os/commands/write-spec/write-spec.md}}
 
-  3. Return the spec path: agent-os/specs/[phase-name-slug]/spec.md
+  3. Return the spec path: .agent-os/specs/[phase-name-slug]/spec.md
 
   IMPORTANT: This is part of an autonomous parallel workflow.
   - Do NOT ask user for permission between steps
@@ -337,7 +337,7 @@ First, find all specs that were created:
 
 ```bash
 # Find all spec folders
-SPEC_FOLDERS=$(find agent-os/specs -mindepth 1 -maxdepth 1 -type d)
+SPEC_FOLDERS=$(find .agent-os/specs -mindepth 1 -maxdepth 1 -type d)
 
 echo "Found specs:"
 for spec_folder in $SPEC_FOLDERS; do
@@ -368,14 +368,14 @@ if [ ! -d ".beads" ]; then
         spec_name=$(basename "$spec_folder")
 
         # Extract phase number from roadmap
-        PHASE_NUM=$(grep -n "$spec_name" agent-os/product/roadmap.md | cut -d: -f1)
+        PHASE_NUM=$(grep -n "$spec_name" .agent-os/product/roadmap.md | cut -d: -f1)
 
         echo ""
         echo "Creating Beads issues for Phase $PHASE_NUM: $spec_name"
 
         # Run create-beads-issues workflow for this spec
         # This will create issues with proper phase labels and dependencies
-        # Follow: agent-os/workflows/implementation/create-beads-issues.md
+        # Follow: .agent-os/workflows/implementation/create-beads-issues.md
 
     done
 
@@ -455,9 +455,9 @@ Display the following message to the user:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **Product Planning** (with parallel execution):
-  📄 Mission: agent-os/product/mission.md
-  📋 Roadmap: agent-os/product/roadmap.md (✓ updated with completion status)
-  🔧 Tech Stack: agent-os/product/tech-stack.md (✓ consolidated from all specs)
+  📄 Mission: .agent-os/product/mission.md
+  📋 Roadmap: .agent-os/product/roadmap.md (✓ updated with completion status)
+  🔧 Tech Stack: .agent-os/product/tech-stack.md (✓ consolidated from all specs)
 
 **Execution Summary**:
   Total Phases: [N]
@@ -466,7 +466,7 @@ Display the following message to the user:
 
 **Completed Specs**:
 {{FOR each phase}}
-  ✅ [#]. [Feature Name] → agent-os/specs/[phase-name-slug]/spec.md
+  ✅ [#]. [Feature Name] → .agent-os/specs/[phase-name-slug]/spec.md
 {{ENDFOR}}
 
 **Parallelization Speedup**:
